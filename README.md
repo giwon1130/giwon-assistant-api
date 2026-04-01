@@ -36,6 +36,12 @@ API 키가 없거나 실패하면 mock 응답으로 fallback 한다.
 ./gradlew bootRun
 ```
 
+## CORS
+- `http://localhost:4173`
+- `http://127.0.0.1:4173`
+
+`giwon-home` 프론트에서 직접 호출할 수 있도록 기본 CORS를 열어뒀다.
+
 ## API 예시
 ```bash
 curl http://localhost:8080/api/v1/briefings/today
