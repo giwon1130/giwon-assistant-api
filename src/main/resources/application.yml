@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: giwon-assistant-api
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+assistant:
+  integrations:
+    openai-enabled: false
+    weather-enabled: false
+    calendar-enabled: false
