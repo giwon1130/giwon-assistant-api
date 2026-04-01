@@ -9,6 +9,10 @@
 
 ## 현재 구현 범위
 - `GET /api/v1/briefings/today`
+- `POST /api/v1/ideas`
+- `GET /api/v1/ideas`
+- `GET /api/v1/ideas/{id}`
+- `PATCH /api/v1/ideas/{id}`
 - `POST /api/v1/ideas/summaries`
 - `GET /api/v1/plans/today`
 - `GET /actuator/health`
@@ -43,10 +47,16 @@ curl -X POST http://localhost:8080/api/v1/ideas/summaries \
   -d '{"title":"아침 브리핑 제품화","rawText":"아침마다 날씨와 일정, 뉴스 요약을 자동으로 정리해주고 싶다."}'
 ```
 
+```bash
+curl -X POST http://localhost:8080/api/v1/ideas \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"AI 비서 자동화","rawText":"아침마다 날씨와 일정, 뉴스, 할 일을 정리해주는 기능을 만들고 싶다.","tags":["assistant","automation"]}'
+```
+
 ## 다음 단계
 - Google Calendar 실제 연동
 - Notion / News 연동
-- 요약 결과 저장
+- 아이디어/브리핑 영구 저장
 - 사용자별 브리핑 템플릿 분리
 - 자동 실행 스케줄러 추가
 
