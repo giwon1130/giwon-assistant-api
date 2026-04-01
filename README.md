@@ -14,7 +14,8 @@
 - `GET /actuator/health`
 
 현재는 외부 연동 전 단계라 mock 기반 응답을 먼저 제공한다.
-구조를 먼저 잡고, 이후 OpenAI / Calendar / Weather / News 연동을 붙이는 방향이다.
+현재 날씨는 Open-Meteo를 통해 실제 값을 받아오고, 나머지는 mock 기반 응답을 먼저 제공한다.
+구조를 먼저 잡고, 이후 OpenAI / Calendar / News 연동을 붙이는 방향이다.
 
 ## 기술 스택
 - Kotlin
@@ -46,3 +47,6 @@ curl -X POST http://localhost:8080/api/v1/ideas/summaries \
 - 요약 결과 저장
 - 사용자별 브리핑 템플릿 분리
 - 자동 실행 스케줄러 추가
+
+## 참고
+- 날씨 데이터는 Open-Meteo Forecast API를 기준으로 연동했다.
