@@ -16,7 +16,8 @@
 현재는 외부 연동 전 단계라 mock 기반 응답을 먼저 제공한다.
 현재 날씨는 Open-Meteo를 통해 실제 값을 받아오고,
 캘린더는 provider 구조를 먼저 만들고 설정 기반 이벤트를 기본값으로 사용한다.
-이후 OpenAI / Google Calendar / News 연동을 붙이는 방향이다.
+아이디어 요약은 OpenAI Responses API를 붙일 수 있게 만들었고,
+API 키가 없거나 실패하면 mock 응답으로 fallback 한다.
 
 ## 기술 스택
 - Kotlin
@@ -43,7 +44,6 @@ curl -X POST http://localhost:8080/api/v1/ideas/summaries \
 ```
 
 ## 다음 단계
-- OpenAI 응답 생성 연동
 - Google Calendar 실제 연동
 - Notion / News 연동
 - 요약 결과 저장
@@ -53,3 +53,4 @@ curl -X POST http://localhost:8080/api/v1/ideas/summaries \
 ## 참고
 - 날씨 데이터는 Open-Meteo Forecast API를 기준으로 연동했다.
 - 캘린더는 Google Calendar provider를 붙일 수 있도록 구조를 먼저 분리했다.
+- OpenAI 연동은 공식 Responses API 기준으로 붙였다.

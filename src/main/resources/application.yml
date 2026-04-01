@@ -24,3 +24,5 @@ assistant:
         title: "프로젝트 구조 정리"
       - time: "15:00"
         title: "개인 서비스 점검"
+  openai:
+    model: gpt-4.1
