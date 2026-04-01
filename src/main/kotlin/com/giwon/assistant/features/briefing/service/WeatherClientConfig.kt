@@ -6,7 +6,10 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.web.client.RestClient
 
 @Configuration
-@EnableConfigurationProperties(AssistantWeatherProperties::class)
+@EnableConfigurationProperties(
+    AssistantWeatherProperties::class,
+    AssistantCalendarProperties::class,
+)
 class WeatherClientConfig {
     @Bean
     fun weatherRestClient(): RestClient =
