@@ -5,6 +5,7 @@ import com.giwon.assistant.features.idea.dto.IdeaSummaryResponse
 import com.giwon.assistant.features.idea.dto.CreateIdeaRequest
 import com.giwon.assistant.features.idea.dto.IdeaDetailResponse
 import com.giwon.assistant.features.idea.dto.UpdateIdeaRequest
+import com.giwon.assistant.features.idea.entity.IdeaEntity
 import com.giwon.assistant.features.idea.model.Idea
 import com.giwon.assistant.features.idea.repository.IdeaRepository
 import org.springframework.stereotype.Service
@@ -36,18 +37,20 @@ class IdeaService(
             updatedAt = now,
         )
 
-        return ideaRepository.save(idea).toResponse()
+        return ideaRepository.save(idea.toEntity()).toModel().toResponse()
     }
 
     fun getAll(): List<IdeaDetailResponse> =
-        ideaRepository.findAll().map { it.toResponse() }
+        ideaRepository.findAll()
+            .sortedByDescending { it.createdAt }
+            .map { it.toModel().toResponse() }
 
     fun getById(id: String): IdeaDetailResponse =
-        ideaRepository.findById(id)?.toResponse()
+        ideaRepository.findById(id).orElse(null)?.toModel()?.toResponse()
             ?: throw IllegalArgumentException("Idea not found: $id")
 
     fun update(id: String, request: UpdateIdeaRequest): IdeaDetailResponse {
-        val current = ideaRepository.findById(id)
+        val current = ideaRepository.findById(id).orElse(null)?.toModel()
             ?: throw IllegalArgumentException("Idea not found: $id")
 
         val title = request.title ?: current.title
@@ -78,8 +81,36 @@ class IdeaService(
             updatedAt = OffsetDateTime.now(),
         )
 
-        return ideaRepository.save(updated).toResponse()
+        return ideaRepository.save(updated.toEntity()).toModel().toResponse()
     }
+
+    private fun Idea.toEntity(): IdeaEntity =
+        IdeaEntity(
+            id = id,
+            title = title,
+            rawText = rawText,
+            summary = summary,
+            keyPoints = keyPoints,
+            suggestedActions = suggestedActions,
+            tags = tags,
+            status = status,
+            createdAt = createdAt,
+            updatedAt = updatedAt,
+        )
+
+    private fun IdeaEntity.toModel(): Idea =
+        Idea(
+            id = id,
+            title = title,
+            rawText = rawText,
+            summary = summary,
+            keyPoints = keyPoints,
+            suggestedActions = suggestedActions,
+            tags = tags,
+            status = status,
+            createdAt = createdAt,
+            updatedAt = updatedAt,
+        )
 
     private fun Idea.toResponse(): IdeaDetailResponse =
         IdeaDetailResponse(

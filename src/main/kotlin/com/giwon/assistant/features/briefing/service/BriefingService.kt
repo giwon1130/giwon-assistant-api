@@ -1,16 +1,25 @@
 package com.giwon.assistant.features.briefing.service
 
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.giwon.assistant.features.briefing.dto.BriefingHistoryResponse
 import com.giwon.assistant.features.briefing.dto.CalendarItem
 import com.giwon.assistant.features.briefing.dto.HeadlineItem
 import com.giwon.assistant.features.briefing.dto.TaskItem
 import com.giwon.assistant.features.briefing.dto.TodayBriefingResponse
 import com.giwon.assistant.features.briefing.dto.WeatherSummary
+import com.giwon.assistant.features.briefing.entity.BriefingHistoryEntity
+import com.giwon.assistant.features.briefing.repository.BriefingHistoryRepository
 import org.springframework.stereotype.Service
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.util.UUID
 
 @Service
-class BriefingService {
+class BriefingService(
+    private val briefingHistoryRepository: BriefingHistoryRepository,
+    private val objectMapper: ObjectMapper,
+) {
     private fun fallbackWeather(): WeatherSummary =
         WeatherSummary(
             location = "Seoul",
@@ -21,8 +30,8 @@ class BriefingService {
     fun getTodayBriefing(
         weatherProvider: WeatherProvider,
         calendarProvider: CalendarProvider,
-    ): TodayBriefingResponse =
-        TodayBriefingResponse(
+    ): TodayBriefingResponse {
+        val response = TodayBriefingResponse(
             generatedAt = OffsetDateTime.now().toString(),
             summary = "오늘은 오전 집중 작업 1건과 오후 미팅 1건이 있어. 먼저 중요한 작업을 끝내는 흐름이 좋다.",
             weather = runCatching { weatherProvider.getCurrentWeather() }.getOrElse { fallbackWeather() },
@@ -43,5 +52,42 @@ class BriefingService {
                 TaskItem(priority = "LOW", title = "아이디어 노트 정리"),
             ),
             focusSuggestion = "오전에는 설계와 구현을 한 번에 끝내고, 오후에는 연결 작업과 정리에 집중하는 게 좋다.",
+        )
+
+        briefingHistoryRepository.save(response.toEntity())
+        return response
+    }
+
+    fun getRecentHistory(): List<BriefingHistoryResponse> =
+        briefingHistoryRepository.findTop7ByOrderByGeneratedAtDesc().map { it.toResponse() }
+
+    private fun TodayBriefingResponse.toEntity(): BriefingHistoryEntity =
+        BriefingHistoryEntity(
+            id = "BRIEFING-${UUID.randomUUID()}",
+            generatedAt = OffsetDateTime.parse(generatedAt),
+            summary = summary,
+            weatherLocation = weather.location,
+            weatherCondition = weather.condition,
+            weatherTemperatureCelsius = weather.temperatureCelsius,
+            calendarItems = objectMapper.writeValueAsString(calendar),
+            headlines = objectMapper.writeValueAsString(headlines),
+            tasks = objectMapper.writeValueAsString(tasks),
+            focusSuggestion = focusSuggestion,
+        )
+
+    private fun BriefingHistoryEntity.toResponse(): BriefingHistoryResponse =
+        BriefingHistoryResponse(
+            id = id,
+            generatedAt = generatedAt.toString(),
+            summary = summary,
+            weather = WeatherSummary(
+                location = weatherLocation,
+                condition = weatherCondition,
+                temperatureCelsius = weatherTemperatureCelsius,
+            ),
+            calendar = objectMapper.readValue(calendarItems, object : TypeReference<List<CalendarItem>>() {}),
+            headlines = objectMapper.readValue(headlines, object : TypeReference<List<HeadlineItem>>() {}),
+            tasks = objectMapper.readValue(tasks, object : TypeReference<List<TaskItem>>() {}),
+            focusSuggestion = focusSuggestion,
         )
 }

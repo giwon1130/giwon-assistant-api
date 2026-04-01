@@ -1,6 +1,7 @@
 # giwon-assistant-api
 
 아침 브리핑, 아이디어 정리, 일정/할 일 요약을 제공하는 개인 AI 비서 API다.
+지금은 브리핑 이력과 아이디어를 DB에 저장하는 형태까지 들어간 초기 제품 단계다.
 
 ## MVP 방향
 - 아침마다 하루 계획, 날씨, 뉴스 요약을 한 번에 정리
@@ -9,6 +10,7 @@
 
 ## 현재 구현 범위
 - `GET /api/v1/briefings/today`
+- `GET /api/v1/briefings/history`
 - `POST /api/v1/ideas`
 - `GET /api/v1/ideas`
 - `GET /api/v1/ideas/{id}`
@@ -17,11 +19,11 @@
 - `GET /api/v1/plans/today`
 - `GET /actuator/health`
 
-현재는 외부 연동 전 단계라 mock 기반 응답을 먼저 제공한다.
 현재 날씨는 Open-Meteo를 통해 실제 값을 받아오고,
 캘린더는 provider 구조를 먼저 만들고 설정 기반 이벤트를 기본값으로 사용한다.
 아이디어 요약은 OpenAI Responses API를 붙일 수 있게 만들었고,
 API 키가 없거나 실패하면 mock 응답으로 fallback 한다.
+아이디어와 브리핑 이력은 JPA + Flyway 기반으로 저장된다.
 
 ## 기술 스택
 - Kotlin
@@ -29,12 +31,28 @@ API 키가 없거나 실패하면 mock 응답으로 fallback 한다.
 - Spring Web
 - Spring Validation
 - Spring Actuator
+- Spring Data JPA
+- Flyway
+- H2 / PostgreSQL
 - Docker
 
 ## 로컬 실행
 ```bash
 ./gradlew bootRun
 ```
+
+- 기본 프로필은 파일 기반 H2를 사용한다.
+- 그래서 DB를 따로 띄우지 않아도 아이디어/브리핑 이력이 로컬 파일에 저장된다.
+
+## Docker 실행
+```bash
+docker compose up -d --build
+```
+
+- Docker 실행 시에는 PostgreSQL 프로필로 올라간다.
+- 기본 포트:
+  - API: `8080`
+  - PostgreSQL: `5436`
 
 ## CORS
 - `http://localhost:4173`
@@ -45,6 +63,10 @@ API 키가 없거나 실패하면 mock 응답으로 fallback 한다.
 ## API 예시
 ```bash
 curl http://localhost:8080/api/v1/briefings/today
+```
+
+```bash
+curl http://localhost:8080/api/v1/briefings/history
 ```
 
 ```bash
@@ -62,7 +84,6 @@ curl -X POST http://localhost:8080/api/v1/ideas \
 ## 다음 단계
 - Google Calendar 실제 연동
 - Notion / News 연동
-- 아이디어/브리핑 영구 저장
 - 사용자별 브리핑 템플릿 분리
 - 자동 실행 스케줄러 추가
 

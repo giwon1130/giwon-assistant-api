@@ -1,11 +1,9 @@
 spring:
-  application:
-    name: giwon-assistant-api
   datasource:
-    url: ${ASSISTANT_DB_URL:jdbc:h2:file:./data/giwon-assistant;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE}
-    username: ${ASSISTANT_DB_USERNAME:sa}
-    password: ${ASSISTANT_DB_PASSWORD:}
-    driver-class-name: ${ASSISTANT_DB_DRIVER:org.h2.Driver}
+    url: jdbc:h2:mem:giwon-assistant-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
   jpa:
     hibernate:
       ddl-auto: validate
@@ -13,16 +11,10 @@ spring:
   flyway:
     enabled: true
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
-
 assistant:
   integrations:
     openai-enabled: false
-    weather-enabled: true
+    weather-enabled: false
     calendar-enabled: false
   weather:
     location-name: Seoul

@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: giwon-assistant-postgres
+    environment:
+      POSTGRES_DB: giwon_assistant
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5436:5432"
+    volumes:
+      - giwon-assistant-postgres-data:/var/lib/postgresql/data
+
+  giwon-assistant-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: giwon-assistant-api
+    depends_on:
+      - postgres
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      ASSISTANT_DB_URL: jdbc:postgresql://postgres:5432/giwon_assistant
+      ASSISTANT_DB_USERNAME: postgres
+      ASSISTANT_DB_PASSWORD: postgres
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "8080:8080"
+
+volumes:
+  giwon-assistant-postgres-data:

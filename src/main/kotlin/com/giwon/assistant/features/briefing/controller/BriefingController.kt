@@ -1,6 +1,7 @@
 package com.giwon.assistant.features.briefing.controller
 
 import com.giwon.assistant.common.ApiResponse
+import com.giwon.assistant.features.briefing.dto.BriefingHistoryResponse
 import com.giwon.assistant.features.briefing.dto.TodayBriefingResponse
 import com.giwon.assistant.features.briefing.service.BriefingService
 import com.giwon.assistant.features.briefing.service.CalendarProvider
@@ -19,4 +20,8 @@ class BriefingController(
     @GetMapping("/today")
     fun getTodayBriefing(): ApiResponse<TodayBriefingResponse> =
         ApiResponse.ok(briefingService.getTodayBriefing(weatherProvider, calendarProvider))
+
+    @GetMapping("/history")
+    fun getRecentHistory(): ApiResponse<List<BriefingHistoryResponse>> =
+        ApiResponse.ok(briefingService.getRecentHistory())
 }

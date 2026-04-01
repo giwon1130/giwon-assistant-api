@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: ${ASSISTANT_DB_URL:jdbc:postgresql://postgres:5432/giwon_assistant}
+    username: ${ASSISTANT_DB_USERNAME:postgres}
+    password: ${ASSISTANT_DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+

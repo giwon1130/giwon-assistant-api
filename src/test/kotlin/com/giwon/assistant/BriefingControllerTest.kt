@@ -23,4 +23,15 @@ class BriefingControllerTest {
             .andExpect(jsonPath("$.data.weather.location").value("Seoul"))
             .andExpect(jsonPath("$.data.tasks.length()").value(3))
     }
+
+    @Test
+    fun `briefing history endpoint returns saved briefings`() {
+        mockMvc.perform(get("/api/v1/briefings/today"))
+            .andExpect(status().isOk)
+
+        mockMvc.perform(get("/api/v1/briefings/history"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.length()").value(1))
+    }
 }
