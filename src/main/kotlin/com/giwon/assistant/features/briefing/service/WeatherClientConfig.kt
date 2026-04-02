@@ -10,6 +10,7 @@ import org.springframework.web.client.RestClient
     AssistantWeatherProperties::class,
     AssistantCalendarProperties::class,
     AssistantNewsProperties::class,
+    AssistantBriefingScheduleProperties::class,
 )
 class WeatherClientConfig {
     @Bean

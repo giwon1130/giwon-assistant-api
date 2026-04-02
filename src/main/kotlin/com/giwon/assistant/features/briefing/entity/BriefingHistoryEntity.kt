@@ -14,6 +14,8 @@ class BriefingHistoryEntity(
     var id: String = "",
     @Column(name = "generated_at", nullable = false)
     var generatedAt: OffsetDateTime = OffsetDateTime.now(),
+    @Column(name = "source", nullable = false, length = 32)
+    var source: String = "MANUAL",
     @Column(name = "summary", nullable = false, columnDefinition = "text")
     var summary: String = "",
     @Column(name = "weather_location", nullable = false)

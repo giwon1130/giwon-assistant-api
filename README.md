@@ -11,6 +11,7 @@
 ## 현재 구현 범위
 - `GET /api/v1/briefings/today`
 - `GET /api/v1/briefings/history`
+- `GET /api/v1/briefings/schedule`
 - `POST /api/v1/ideas`
 - `GET /api/v1/ideas`
 - `GET /api/v1/ideas/{id}`
@@ -25,6 +26,7 @@
 아이디어 요약은 OpenAI Responses API를 붙일 수 있게 만들었고,
 API 키가 없거나 실패하면 mock 응답으로 fallback 한다.
 아이디어와 브리핑 이력은 JPA + Flyway 기반으로 저장된다.
+자동 브리핑은 기본적으로 매일 오전 8시(Asia/Seoul) 스케줄로 동작하며, 같은 날 자동 브리핑은 중복 저장하지 않는다.
 
 ## 기술 스택
 - Kotlin
@@ -86,7 +88,7 @@ curl -X POST http://localhost:8080/api/v1/ideas \
 - Google Calendar 실제 연동
 - Notion / News 연동
 - 사용자별 브리핑 템플릿 분리
-- 자동 실행 스케줄러 추가
+- 자동 브리핑 결과 전송 채널 추가
 
 ## 참고
 - 날씨 데이터는 Open-Meteo Forecast API를 기준으로 연동했다.

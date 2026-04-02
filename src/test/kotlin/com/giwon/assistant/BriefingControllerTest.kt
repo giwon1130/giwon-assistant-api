@@ -34,4 +34,13 @@ class BriefingControllerTest {
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.length()").value(1))
     }
+
+    @Test
+    fun `briefing schedule endpoint returns schedule status`() {
+        mockMvc.perform(get("/api/v1/briefings/schedule"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.enabled").value(false))
+            .andExpect(jsonPath("$.data.zone").value("Asia/Seoul"))
+    }
 }
