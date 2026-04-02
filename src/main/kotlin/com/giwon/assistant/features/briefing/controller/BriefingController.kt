@@ -5,6 +5,7 @@ import com.giwon.assistant.features.briefing.dto.BriefingHistoryResponse
 import com.giwon.assistant.features.briefing.dto.TodayBriefingResponse
 import com.giwon.assistant.features.briefing.service.BriefingService
 import com.giwon.assistant.features.briefing.service.CalendarProvider
+import com.giwon.assistant.features.briefing.service.NewsProvider
 import com.giwon.assistant.features.briefing.service.WeatherProvider
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -16,10 +17,11 @@ class BriefingController(
     private val briefingService: BriefingService,
     private val weatherProvider: WeatherProvider,
     private val calendarProvider: CalendarProvider,
+    private val newsProvider: NewsProvider,
 ) {
     @GetMapping("/today")
     fun getTodayBriefing(): ApiResponse<TodayBriefingResponse> =
-        ApiResponse.ok(briefingService.getTodayBriefing(weatherProvider, calendarProvider))
+        ApiResponse.ok(briefingService.getTodayBriefing(weatherProvider, calendarProvider, newsProvider))
 
     @GetMapping("/history")
     fun getRecentHistory(): ApiResponse<List<BriefingHistoryResponse>> =

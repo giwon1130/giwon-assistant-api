@@ -9,6 +9,7 @@ import org.springframework.web.client.RestClient
 @EnableConfigurationProperties(
     AssistantWeatherProperties::class,
     AssistantCalendarProperties::class,
+    AssistantNewsProperties::class,
 )
 class WeatherClientConfig {
     @Bean
@@ -16,4 +17,8 @@ class WeatherClientConfig {
         RestClient.builder()
             .baseUrl("https://api.open-meteo.com")
             .build()
+
+    @Bean
+    fun newsRestClient(): RestClient =
+        RestClient.builder().build()
 }

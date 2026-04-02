@@ -30,6 +30,7 @@ class BriefingService(
     fun getTodayBriefing(
         weatherProvider: WeatherProvider,
         calendarProvider: CalendarProvider,
+        newsProvider: NewsProvider,
     ): TodayBriefingResponse {
         val response = TodayBriefingResponse(
             generatedAt = OffsetDateTime.now().toString(),
@@ -42,10 +43,13 @@ class BriefingService(
                         CalendarItem(time = "15:00", title = "개인 서비스 점검"),
                     )
                 },
-            headlines = listOf(
-                HeadlineItem(source = "Tech", title = "AI 제품화 경쟁이 심화되는 중"),
-                HeadlineItem(source = "Local", title = "날씨 변동 폭이 커 외출 전 확인 필요"),
-            ),
+            headlines = runCatching { newsProvider.getTopHeadlines() }
+                .getOrElse {
+                    listOf(
+                        HeadlineItem(source = "Tech", title = "AI 제품화 경쟁이 심화되는 중"),
+                        HeadlineItem(source = "Local", title = "날씨 변동 폭이 커 외출 전 확인 필요"),
+                    )
+                },
             tasks = listOf(
                 TaskItem(priority = "HIGH", title = "AI 비서 MVP API 구조 확정"),
                 TaskItem(priority = "MEDIUM", title = "giwon-home에 live 링크 연결"),
