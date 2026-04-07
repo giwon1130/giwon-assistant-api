@@ -19,6 +19,7 @@
 - `POST /api/v1/ideas/summaries`
 - `GET /api/v1/plans/today`
 - `GET /api/v1/copilot/today`
+- `POST /api/v1/copilot/ask`
 - `GET /actuator/health`
 
 현재 날씨는 Open-Meteo를 통해 실제 값을 받아오고,
@@ -75,6 +76,12 @@ curl http://localhost:8080/api/v1/briefings/history
 
 ```bash
 curl http://localhost:8080/api/v1/copilot/today
+```
+
+```bash
+curl -X POST http://localhost:8080/api/v1/copilot/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"오늘 뭐부터 하면 좋을까?"}'
 ```
 
 ```bash

@@ -1,16 +1,22 @@
 package com.giwon.assistant.features.copilot.service
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.giwon.assistant.features.briefing.service.BriefingService
 import com.giwon.assistant.features.briefing.service.CalendarProvider
 import com.giwon.assistant.features.briefing.service.NewsProvider
 import com.giwon.assistant.features.briefing.service.WeatherProvider
+import com.giwon.assistant.features.copilot.dto.CopilotAskResponse
+import com.giwon.assistant.features.copilot.dto.TodayCopilotResponse
 import com.giwon.assistant.features.copilot.dto.CopilotIdeaAction
 import com.giwon.assistant.features.copilot.dto.CopilotTimeSuggestion
-import com.giwon.assistant.features.copilot.dto.TodayCopilotResponse
 import com.giwon.assistant.features.idea.service.IdeaService
+import com.giwon.assistant.features.idea.service.AssistantOpenAiProperties
 import com.giwon.assistant.features.planner.service.PlannerService
 import org.springframework.stereotype.Service
+import org.springframework.web.client.RestClient
 import java.time.OffsetDateTime
+import org.springframework.beans.factory.annotation.Value
 
 @Service
 class CopilotService(
@@ -20,6 +26,10 @@ class CopilotService(
     private val weatherProvider: WeatherProvider,
     private val calendarProvider: CalendarProvider,
     private val newsProvider: NewsProvider,
+    private val openAiRestClient: RestClient,
+    private val openAiProperties: AssistantOpenAiProperties,
+    @Value("\${assistant.integrations.openai-enabled:false}") private val openAiEnabled: Boolean,
+    @Value("\${OPENAI_API_KEY:}") private val openAiApiKey: String,
 ) {
     fun getTodayCopilot(): TodayCopilotResponse {
         val briefing = briefingService.getTodayBriefing(weatherProvider, calendarProvider, newsProvider)
@@ -54,6 +64,25 @@ class CopilotService(
                 )
             },
             todayFlow = buildTodayFlow(todayPlan.topPriorities, briefing.calendar.map { it.time to it.title })
+        )
+    }
+
+    fun ask(question: String): CopilotAskResponse {
+        val copilot = getTodayCopilot()
+        val ideas = ideaService.getAll().take(3)
+        val answer = runCatching {
+            if (openAiEnabled && openAiApiKey.isNotBlank()) {
+                askWithOpenAi(question, copilot, ideas)
+            } else {
+                localAsk(question, copilot, ideas)
+            }
+        }.getOrElse {
+            localAsk(question, copilot, ideas)
+        }
+
+        return answer.copy(
+            question = question,
+            generatedAt = OffsetDateTime.now().toString(),
         )
     }
 
@@ -132,4 +161,142 @@ class CopilotService(
             )
         )
     }
+
+    private fun askWithOpenAi(
+        question: String,
+        copilot: TodayCopilotResponse,
+        ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
+    ): CopilotAskResponse {
+        val prompt = buildAskPrompt(question, copilot, ideas)
+        val body = mapOf(
+            "model" to openAiProperties.model,
+            "input" to prompt,
+        )
+
+        val response = openAiRestClient.post()
+            .uri("/v1/responses")
+            .header("Authorization", "Bearer $openAiApiKey")
+            .header("Content-Type", "application/json")
+            .body(body)
+            .retrieve()
+            .body(OpenAiResponse::class.java)
+            ?: error("OpenAI response is empty")
+
+        val outputText = response.outputText?.takeIf { it.isNotBlank() }
+            ?: error("OpenAI output_text is empty")
+
+        return parseAskOutput(outputText, question)
+    }
+
+    private fun buildAskPrompt(
+        question: String,
+        copilot: TodayCopilotResponse,
+        ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
+    ): String =
+        """
+        너는 개인 생산성 코파일럿이다.
+        아래 오늘 컨텍스트를 기준으로 질문에 짧고 실행 가능한 답을 해줘.
+        응답은 반드시 아래 형식을 지켜.
+
+        ANSWER: 한두 문장 답변
+        REASONING:
+        - 근거 1
+        - 근거 2
+        - 근거 3
+        SUGGESTED_ACTIONS:
+        - 액션 1
+        - 액션 2
+        - 액션 3
+
+        오늘 헤드라인: ${copilot.headline}
+        오늘 우선순위: ${copilot.topPriority}
+        다음 액션: ${copilot.suggestedNextAction}
+        리스크:
+        ${copilot.risks.joinToString("\n") { "- $it" }}
+        최근 아이디어:
+        ${ideas.joinToString("\n") { "- ${it.title} (${it.status})" }}
+
+        사용자 질문:
+        $question
+        """.trimIndent()
+
+    private fun parseAskOutput(outputText: String, question: String): CopilotAskResponse {
+        val lines = outputText.lines().map { it.trim() }.filter { it.isNotBlank() }
+        val answer = lines.firstOrNull { it.startsWith("ANSWER:") }
+            ?.substringAfter("ANSWER:")
+            ?.trim()
+            ?.ifBlank { outputText.take(160) }
+            ?: outputText.take(160)
+
+        return CopilotAskResponse(
+            question = question,
+            answer = answer,
+            reasoning = extractBulletSection(lines, "REASONING:").ifEmpty {
+                listOf("오늘 브리핑과 우선순위 흐름을 기준으로 답변했습니다.")
+            },
+            suggestedActions = extractBulletSection(lines, "SUGGESTED_ACTIONS:").ifEmpty {
+                listOf("우선순위 작업 먼저 진행", "중요 결정 1건 확정", "끝난 뒤 다음 액션 정리")
+            },
+            source = "OPENAI",
+            generatedAt = OffsetDateTime.now().toString(),
+        )
+    }
+
+    private fun localAsk(
+        question: String,
+        copilot: TodayCopilotResponse,
+        ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
+    ): CopilotAskResponse {
+        val lowered = question.lowercase()
+        val firstIdea = ideas.firstOrNull()
+        val answer = when {
+            lowered.contains("우선") || lowered.contains("먼저") -> copilot.topPriority
+            lowered.contains("아이디어") -> firstIdea?.let { "'${it.title}'부터 보는 게 좋다. ${it.suggestedActions.firstOrNull() ?: "가장 작은 작업 단위 하나를 먼저 시작해."}" }
+                ?: "지금은 새 아이디어보다 오늘 우선순위 작업부터 끝내는 게 좋다."
+            lowered.contains("일정") || lowered.contains("시간") -> copilot.todayFlow.firstOrNull()?.let { "${it.time}에는 ${it.focus}에 집중하는 흐름이 좋다." }
+                ?: copilot.suggestedNextAction
+            lowered.contains("뉴스") || lowered.contains("헤드라인") -> copilot.overview
+            else -> "${copilot.headline} ${copilot.suggestedNextAction}"
+        }
+
+        return CopilotAskResponse(
+            question = question,
+            answer = answer,
+            reasoning = listOf(
+                copilot.topPriority,
+                copilot.risks.firstOrNull() ?: "중간 컨텍스트 전환을 줄이는 게 좋다.",
+                firstIdea?.let { "최근 아이디어 '${it.title}'는 ${it.status} 상태다." } ?: "최근 아이디어보다 현재 우선순위 작업이 중요하다."
+            ),
+            suggestedActions = listOf(
+                copilot.suggestedNextAction,
+                copilot.todayFlow.firstOrNull()?.focus ?: "오전 집중 작업 확보",
+                firstIdea?.suggestedActions?.firstOrNull() ?: "작업 종료 후 다음 액션 기록"
+            ),
+            source = "RULE_BASED",
+            generatedAt = OffsetDateTime.now().toString(),
+        )
+    }
+
+    private fun extractBulletSection(lines: List<String>, header: String): List<String> {
+        val startIndex = lines.indexOfFirst { it == header }
+        if (startIndex == -1) {
+            return emptyList()
+        }
+
+        return lines.drop(startIndex + 1)
+            .takeWhile { !it.endsWith(":") }
+            .mapNotNull { line ->
+                when {
+                    line.startsWith("- ") -> line.removePrefix("- ").trim()
+                    line.startsWith("* ") -> line.removePrefix("* ").trim()
+                    else -> null
+                }
+            }
+    }
 }
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+private data class OpenAiResponse(
+    @JsonProperty("output_text")
+    val outputText: String?,
+)

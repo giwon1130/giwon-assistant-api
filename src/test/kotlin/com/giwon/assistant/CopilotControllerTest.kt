@@ -41,4 +41,18 @@ class CopilotControllerTest {
             .andExpect(jsonPath("$.data.recommendedIdeas[0].title").exists())
             .andExpect(jsonPath("$.data.todayFlow.length()").value(3))
     }
+
+    @Test
+    fun `copilot ask endpoint returns actionable answer`() {
+        mockMvc.perform(
+            post("/api/v1/copilot/ask")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"question":"오늘 뭐부터 하면 좋을까?"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.answer").exists())
+            .andExpect(jsonPath("$.data.reasoning[0]").exists())
+            .andExpect(jsonPath("$.data.suggestedActions[0]").exists())
+    }
 }
