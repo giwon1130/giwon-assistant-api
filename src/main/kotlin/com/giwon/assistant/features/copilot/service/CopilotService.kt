@@ -13,6 +13,7 @@ import com.giwon.assistant.features.copilot.dto.CopilotIdeaAction
 import com.giwon.assistant.features.copilot.dto.CopilotTimeSuggestion
 import com.giwon.assistant.features.copilot.entity.CopilotHistoryEntity
 import com.giwon.assistant.features.copilot.repository.CopilotHistoryRepository
+import com.giwon.assistant.features.idea.service.AssistantGeminiProperties
 import com.giwon.assistant.features.idea.service.IdeaService
 import com.giwon.assistant.features.idea.service.AssistantOpenAiProperties
 import com.giwon.assistant.features.planner.service.PlannerService
@@ -31,10 +32,14 @@ class CopilotService(
     private val weatherProvider: WeatherProvider,
     private val calendarProvider: CalendarProvider,
     private val newsProvider: NewsProvider,
+    private val geminiRestClient: RestClient,
     private val openAiRestClient: RestClient,
+    private val geminiProperties: AssistantGeminiProperties,
     private val openAiProperties: AssistantOpenAiProperties,
     private val objectMapper: ObjectMapper,
+    @Value("\${assistant.integrations.gemini-enabled:false}") private val geminiEnabled: Boolean,
     @Value("\${assistant.integrations.openai-enabled:false}") private val openAiEnabled: Boolean,
+    @Value("\${GEMINI_API_KEY:}") private val geminiApiKey: String,
     @Value("\${OPENAI_API_KEY:}") private val openAiApiKey: String,
 ) {
     fun getTodayCopilot(): TodayCopilotResponse {
@@ -76,20 +81,16 @@ class CopilotService(
     fun ask(question: String): CopilotAskResponse {
         val copilot = getTodayCopilot()
         val ideas = ideaService.getAll().take(3)
-        val answer = runCatching {
-            if (openAiEnabled && openAiApiKey.isNotBlank()) {
-                askWithOpenAi(question, copilot, ideas)
-            } else {
-                localAsk(question, copilot, ideas)
-            }
-        }.getOrElse { throwable ->
-            localAsk(
+        val providerErrors = mutableListOf<String>()
+
+        val answer = askWithGemini(question, copilot, ideas, providerErrors)
+            ?: askWithOpenAi(question, copilot, ideas, providerErrors)
+            ?: localAsk(
                 question = question,
                 copilot = copilot,
                 ideas = ideas,
-                fallbackReason = buildFallbackReason(throwable),
+                fallbackReason = providerErrors.takeIf { it.isNotEmpty() }?.joinToString(" | "),
             )
-        }
 
         val response = answer.copy(
             question = question,
@@ -178,30 +179,84 @@ class CopilotService(
         )
     }
 
+    private fun askWithGemini(
+        question: String,
+        copilot: TodayCopilotResponse,
+        ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
+        providerErrors: MutableList<String>,
+    ): CopilotAskResponse? {
+        if (!geminiEnabled || geminiApiKey.isBlank()) {
+            return null
+        }
+
+        return runCatching {
+            val prompt = buildAskPrompt(question, copilot, ideas)
+            val body = mapOf(
+                "contents" to listOf(
+                    mapOf(
+                        "parts" to listOf(
+                            mapOf("text" to prompt)
+                        )
+                    )
+                )
+            )
+
+            val responseBody = geminiRestClient.post()
+                .uri { builder ->
+                    builder.path("/v1beta/models/{model}:generateContent")
+                        .queryParam("key", geminiApiKey)
+                        .build(geminiProperties.model)
+                }
+                .header("Content-Type", "application/json")
+                .body(body)
+                .retrieve()
+                .body(String::class.java)
+                ?: error("Gemini response is empty")
+
+            val outputText = extractGeminiOutputText(responseBody)
+                ?: error("Gemini text is empty")
+
+            parseAskOutput(outputText, question, "GEMINI")
+        }.getOrElse { throwable ->
+            providerErrors += buildFallbackReason("Gemini", throwable)
+            null
+        }
+    }
+
     private fun askWithOpenAi(
         question: String,
         copilot: TodayCopilotResponse,
         ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
-    ): CopilotAskResponse {
-        val prompt = buildAskPrompt(question, copilot, ideas)
-        val body = mapOf(
-            "model" to openAiProperties.model,
-            "input" to prompt,
-        )
+        providerErrors: MutableList<String>,
+    ): CopilotAskResponse? {
+        if (!openAiEnabled || openAiApiKey.isBlank()) {
+            return null
+        }
 
-        val responseBody = openAiRestClient.post()
-            .uri("/v1/responses")
-            .header("Authorization", "Bearer $openAiApiKey")
-            .header("Content-Type", "application/json")
-            .body(body)
-            .retrieve()
-            .body(String::class.java)
-            ?: error("OpenAI response is empty")
+        return runCatching {
+            val prompt = buildAskPrompt(question, copilot, ideas)
+            val body = mapOf(
+                "model" to openAiProperties.model,
+                "input" to prompt,
+            )
 
-        val outputText = extractOpenAiOutputText(responseBody)
-            ?: error("OpenAI output_text is empty")
+            val responseBody = openAiRestClient.post()
+                .uri("/v1/responses")
+                .header("Authorization", "Bearer $openAiApiKey")
+                .header("Content-Type", "application/json")
+                .body(body)
+                .retrieve()
+                .body(String::class.java)
+                ?: error("OpenAI response is empty")
 
-        return parseAskOutput(outputText, question)
+            val outputText = extractOpenAiOutputText(responseBody)
+                ?: error("OpenAI output_text is empty")
+
+            parseAskOutput(outputText, question, "OPENAI")
+        }.getOrElse { throwable ->
+            providerErrors += buildFallbackReason("OpenAI", throwable)
+            null
+        }
     }
 
     internal fun extractOpenAiOutputText(responseBody: String): String? {
@@ -230,6 +285,29 @@ class CopilotService(
             .orEmpty()
 
         return contentTexts.takeIf { it.isNotEmpty() }?.joinToString("\n")
+    }
+
+    internal fun extractGeminiOutputText(responseBody: String): String? {
+        val root = objectMapper.readTree(responseBody)
+
+        val candidateText = root.path("candidates")
+            .takeIf(JsonNode::isArray)
+            ?.flatMap { candidate ->
+                candidate.path("content")
+                    .path("parts")
+                    .takeIf(JsonNode::isArray)
+                    ?.mapNotNull { part ->
+                        part.path("text")
+                            .takeIf { !it.isMissingNode && !it.isNull }
+                            ?.asText()
+                            ?.trim()
+                            ?.takeIf(String::isNotBlank)
+                    }
+                    .orEmpty()
+            }
+            .orEmpty()
+
+        return candidateText.takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
 
     private fun buildAskPrompt(
@@ -264,7 +342,7 @@ class CopilotService(
         $question
         """.trimIndent()
 
-    private fun parseAskOutput(outputText: String, question: String): CopilotAskResponse {
+    private fun parseAskOutput(outputText: String, question: String, source: String): CopilotAskResponse {
         val lines = outputText.lines().map { it.trim() }.filter { it.isNotBlank() }
         val answer = lines.firstOrNull { it.startsWith("ANSWER:") }
             ?.substringAfter("ANSWER:")
@@ -281,7 +359,7 @@ class CopilotService(
             suggestedActions = extractBulletSection(lines, "SUGGESTED_ACTIONS:").ifEmpty {
                 listOf("우선순위 작업 먼저 진행", "중요 결정 1건 확정", "끝난 뒤 다음 액션 정리")
             },
-            source = "OPENAI",
+            source = source,
             generatedAt = OffsetDateTime.now().toString(),
         )
     }
@@ -323,18 +401,18 @@ class CopilotService(
         )
     }
 
-    private fun buildFallbackReason(throwable: Throwable): String =
+    private fun buildFallbackReason(providerName: String, throwable: Throwable): String =
         when (throwable) {
             is RestClientResponseException -> {
                 val statusCode = throwable.statusCode.value()
                 when (statusCode) {
-                    401 -> "OpenAI 인증 실패(401)"
-                    429 -> "OpenAI rate limit 또는 quota 초과(429)"
-                    in 500..599 -> "OpenAI 서버 오류(${statusCode})"
-                    else -> "OpenAI 요청 실패(${statusCode})"
+                    401 -> "${providerName} 인증 실패(401)"
+                    429 -> "${providerName} rate limit 또는 quota 초과(429)"
+                    in 500..599 -> "${providerName} 서버 오류(${statusCode})"
+                    else -> "${providerName} 요청 실패(${statusCode})"
                 }
             }
-            else -> "OpenAI 응답 처리 실패"
+            else -> "${providerName} 응답 처리 실패"
         }
 
     private fun extractBulletSection(lines: List<String>, header: String): List<String> {

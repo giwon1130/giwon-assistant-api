@@ -21,6 +21,7 @@ management:
 
 assistant:
   integrations:
+    gemini-enabled: ${ASSISTANT_INTEGRATIONS_GEMINI_ENABLED:false}
     openai-enabled: ${ASSISTANT_INTEGRATIONS_OPENAI_ENABLED:false}
     weather-enabled: true
     calendar-enabled: false
@@ -45,3 +46,5 @@ assistant:
         title: "개인 서비스 점검"
   openai:
     model: ${ASSISTANT_OPENAI_MODEL:gpt-4.1}
+  gemini:
+    model: ${ASSISTANT_GEMINI_MODEL:gemini-2.0-flash}

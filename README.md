@@ -26,6 +26,8 @@
 현재 날씨는 Open-Meteo를 통해 실제 값을 받아오고,
 뉴스는 Google News RSS를 통해 상위 헤드라인을 가져오며,
 캘린더는 provider 구조를 먼저 만들고 설정 기반 이벤트를 기본값으로 사용한다.
+코파일럿 질문은 Gemini API를 우선 사용하고, 필요하면 OpenAI를 차선으로 사용한다.
+외부 LLM이 모두 실패하면 RULE_BASED 응답으로 fallback 하며 이유를 함께 내려준다.
 아이디어 요약은 OpenAI Responses API를 붙일 수 있게 만들었고,
 API 키가 없거나 실패하면 mock 응답으로 fallback 한다.
 아이디어와 브리핑 이력은 JPA + Flyway 기반으로 저장된다.
@@ -50,7 +52,16 @@ API 키가 없거나 실패하면 mock 응답으로 fallback 한다.
 - 기본 프로필은 파일 기반 H2를 사용한다.
 - 그래서 DB를 따로 띄우지 않아도 아이디어/브리핑 이력이 로컬 파일에 저장된다.
 
-OpenAI 답변을 실제로 쓰려면:
+Gemini 답변을 실제로 쓰려면:
+
+```bash
+export GEMINI_API_KEY=your_key
+export ASSISTANT_INTEGRATIONS_GEMINI_ENABLED=true
+export ASSISTANT_GEMINI_MODEL=gemini-2.0-flash
+./gradlew bootRun
+```
+
+OpenAI를 차선 fallback으로 같이 쓰려면:
 
 ```bash
 export OPENAI_API_KEY=your_key
@@ -69,7 +80,15 @@ docker compose up -d --build
   - API: `8080`
   - PostgreSQL: `5436`
 
-OpenAI를 Docker에서 켜려면 `.env` 또는 셸 환경변수에 아래 값을 넣으면 된다.
+Gemini를 Docker에서 켜려면 `.env` 또는 셸 환경변수에 아래 값을 넣으면 된다.
+
+```bash
+GEMINI_API_KEY=your_key
+ASSISTANT_INTEGRATIONS_GEMINI_ENABLED=true
+ASSISTANT_GEMINI_MODEL=gemini-2.0-flash
+```
+
+OpenAI fallback을 Docker에서 같이 켜려면:
 
 ```bash
 OPENAI_API_KEY=your_key
@@ -128,6 +147,7 @@ curl -X POST http://localhost:8080/api/v1/ideas \
 ## 참고
 - 날씨 데이터는 Open-Meteo Forecast API를 기준으로 연동했다.
 - 캘린더는 Google Calendar provider를 붙일 수 있도록 구조를 먼저 분리했다.
-- OpenAI 연동은 공식 Responses API 기준으로 붙였다.
-- `ASSISTANT_INTEGRATIONS_OPENAI_ENABLED=true`일 때만 실제 OpenAI 응답을 사용한다.
+- Gemini 연동은 `generateContent` API 기준으로 붙였다.
+- `ASSISTANT_INTEGRATIONS_GEMINI_ENABLED=true`일 때 코파일럿 질문에서 Gemini를 우선 사용한다.
+- OpenAI 연동은 공식 Responses API 기준으로 붙였고, Gemini 실패 시 차선 fallback으로 사용 가능하다.
 - 뉴스 연동은 Google News RSS 기반으로 붙였고, 비활성화 시 mock headline 으로 fallback 한다.
