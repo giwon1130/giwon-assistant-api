@@ -18,6 +18,7 @@
 - `PATCH /api/v1/ideas/{id}`
 - `POST /api/v1/ideas/summaries`
 - `GET /api/v1/plans/today`
+- `GET /api/v1/copilot/today`
 - `GET /actuator/health`
 
 현재 날씨는 Open-Meteo를 통해 실제 값을 받아오고,
@@ -73,6 +74,10 @@ curl http://localhost:8080/api/v1/briefings/history
 ```
 
 ```bash
+curl http://localhost:8080/api/v1/copilot/today
+```
+
+```bash
 curl -X POST http://localhost:8080/api/v1/ideas/summaries \
   -H 'Content-Type: application/json' \
   -d '{"title":"아침 브리핑 제품화","rawText":"아침마다 날씨와 일정, 뉴스 요약을 자동으로 정리해주고 싶다."}'
@@ -89,6 +94,7 @@ curl -X POST http://localhost:8080/api/v1/ideas \
 - Notion / News 연동
 - 사용자별 브리핑 템플릿 분리
 - 자동 브리핑 결과 전송 채널 추가
+- 브리핑/계획/아이디어를 기반으로 한 대화형 코파일럿 고도화
 
 ## 참고
 - 날씨 데이터는 Open-Meteo Forecast API를 기준으로 연동했다.

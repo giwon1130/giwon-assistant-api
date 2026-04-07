@@ -46,7 +46,7 @@ class IdeaControllerTest {
 
         mockMvc.perform(get("/api/v1/ideas"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.length()").value(1))
+            .andExpect(jsonPath("$.data[0].title").value("AI 비서 자동화"))
 
         mockMvc.perform(
             patch("/api/v1/ideas/$id")

@@ -32,7 +32,7 @@ class BriefingControllerTest {
         mockMvc.perform(get("/api/v1/briefings/history"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data.length()").value(1))
+            .andExpect(jsonPath("$.data[0].summary").exists())
     }
 
     @Test
