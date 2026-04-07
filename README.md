@@ -19,6 +19,7 @@
 - `POST /api/v1/ideas/summaries`
 - `GET /api/v1/plans/today`
 - `GET /api/v1/copilot/today`
+- `GET /api/v1/copilot/history`
 - `POST /api/v1/copilot/ask`
 - `GET /actuator/health`
 
@@ -76,6 +77,10 @@ curl http://localhost:8080/api/v1/briefings/history
 
 ```bash
 curl http://localhost:8080/api/v1/copilot/today
+```
+
+```bash
+curl http://localhost:8080/api/v1/copilot/history
 ```
 
 ```bash

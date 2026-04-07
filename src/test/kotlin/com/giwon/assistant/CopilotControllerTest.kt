@@ -55,4 +55,19 @@ class CopilotControllerTest {
             .andExpect(jsonPath("$.data.reasoning[0]").exists())
             .andExpect(jsonPath("$.data.suggestedActions[0]").exists())
     }
+
+    @Test
+    fun `copilot history endpoint returns saved answers`() {
+        mockMvc.perform(
+            post("/api/v1/copilot/ask")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"question":"오늘 일정 기준으로 언제 집중 작업하는 게 좋을까?"}""")
+        ).andExpect(status().isOk)
+
+        mockMvc.perform(get("/api/v1/copilot/history"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data[0].question").exists())
+            .andExpect(jsonPath("$.data[0].answer").exists())
+    }
 }

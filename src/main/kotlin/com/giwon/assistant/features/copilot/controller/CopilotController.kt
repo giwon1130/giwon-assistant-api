@@ -3,6 +3,7 @@ package com.giwon.assistant.features.copilot.controller
 import com.giwon.assistant.common.ApiResponse
 import com.giwon.assistant.features.copilot.dto.CopilotAskRequest
 import com.giwon.assistant.features.copilot.dto.CopilotAskResponse
+import com.giwon.assistant.features.copilot.dto.CopilotHistoryResponse
 import com.giwon.assistant.features.copilot.dto.TodayCopilotResponse
 import com.giwon.assistant.features.copilot.service.CopilotService
 import jakarta.validation.Valid
@@ -20,6 +21,10 @@ class CopilotController(
     @GetMapping("/today")
     fun getTodayCopilot(): ApiResponse<TodayCopilotResponse> =
         ApiResponse.ok(copilotService.getTodayCopilot())
+
+    @GetMapping("/history")
+    fun getHistory(): ApiResponse<List<CopilotHistoryResponse>> =
+        ApiResponse.ok(copilotService.getRecentHistory())
 
     @PostMapping("/ask")
     fun ask(@Valid @RequestBody request: CopilotAskRequest): ApiResponse<CopilotAskResponse> =

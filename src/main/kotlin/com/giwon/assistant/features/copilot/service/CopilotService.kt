@@ -2,14 +2,18 @@ package com.giwon.assistant.features.copilot.service
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.giwon.assistant.features.briefing.service.BriefingService
 import com.giwon.assistant.features.briefing.service.CalendarProvider
 import com.giwon.assistant.features.briefing.service.NewsProvider
 import com.giwon.assistant.features.briefing.service.WeatherProvider
 import com.giwon.assistant.features.copilot.dto.CopilotAskResponse
+import com.giwon.assistant.features.copilot.dto.CopilotHistoryResponse
 import com.giwon.assistant.features.copilot.dto.TodayCopilotResponse
 import com.giwon.assistant.features.copilot.dto.CopilotIdeaAction
 import com.giwon.assistant.features.copilot.dto.CopilotTimeSuggestion
+import com.giwon.assistant.features.copilot.entity.CopilotHistoryEntity
+import com.giwon.assistant.features.copilot.repository.CopilotHistoryRepository
 import com.giwon.assistant.features.idea.service.IdeaService
 import com.giwon.assistant.features.idea.service.AssistantOpenAiProperties
 import com.giwon.assistant.features.planner.service.PlannerService
@@ -23,11 +27,13 @@ class CopilotService(
     private val briefingService: BriefingService,
     private val plannerService: PlannerService,
     private val ideaService: IdeaService,
+    private val copilotHistoryRepository: CopilotHistoryRepository,
     private val weatherProvider: WeatherProvider,
     private val calendarProvider: CalendarProvider,
     private val newsProvider: NewsProvider,
     private val openAiRestClient: RestClient,
     private val openAiProperties: AssistantOpenAiProperties,
+    private val objectMapper: ObjectMapper,
     @Value("\${assistant.integrations.openai-enabled:false}") private val openAiEnabled: Boolean,
     @Value("\${OPENAI_API_KEY:}") private val openAiApiKey: String,
 ) {
@@ -80,11 +86,16 @@ class CopilotService(
             localAsk(question, copilot, ideas)
         }
 
-        return answer.copy(
+        val response = answer.copy(
             question = question,
             generatedAt = OffsetDateTime.now().toString(),
         )
+        copilotHistoryRepository.save(response.toEntity())
+        return response
     }
+
+    fun getRecentHistory(): List<CopilotHistoryResponse> =
+        copilotHistoryRepository.findTop10ByOrderByGeneratedAtDesc().map { it.toResponse() }
 
     private fun buildTopPriority(primaryTask: String, firstEventTitle: String?): String =
         if (firstEventTitle == null) {
@@ -293,6 +304,28 @@ class CopilotService(
                 }
             }
     }
+
+    private fun CopilotAskResponse.toEntity(): CopilotHistoryEntity =
+        CopilotHistoryEntity(
+            id = "COPILOT-${java.util.UUID.randomUUID()}",
+            generatedAt = OffsetDateTime.parse(generatedAt),
+            question = question,
+            answer = answer,
+            reasoning = objectMapper.writeValueAsString(reasoning),
+            suggestedActions = objectMapper.writeValueAsString(suggestedActions),
+            source = source,
+        )
+
+    private fun CopilotHistoryEntity.toResponse(): CopilotHistoryResponse =
+        CopilotHistoryResponse(
+            id = id,
+            question = question,
+            answer = answer,
+            reasoning = objectMapper.readValue(reasoning, objectMapper.typeFactory.constructCollectionType(List::class.java, String::class.java)),
+            suggestedActions = objectMapper.readValue(suggestedActions, objectMapper.typeFactory.constructCollectionType(List::class.java, String::class.java)),
+            source = source,
+            generatedAt = generatedAt.toString(),
+        )
 }
 
 @JsonIgnoreProperties(ignoreUnknown = true)
