@@ -16,6 +16,7 @@ import com.giwon.assistant.features.copilot.repository.CopilotHistoryRepository
 import com.giwon.assistant.features.idea.service.AssistantGeminiProperties
 import com.giwon.assistant.features.idea.service.IdeaService
 import com.giwon.assistant.features.idea.service.AssistantOpenAiProperties
+import com.giwon.assistant.features.planner.dto.TodayPlanResponse
 import com.giwon.assistant.features.planner.service.PlannerService
 import org.springframework.stereotype.Service
 import org.springframework.web.client.RestClient
@@ -80,6 +81,7 @@ class CopilotService(
 
     fun ask(question: String): CopilotAskResponse {
         val copilot = getTodayCopilot()
+        val todayPlan = plannerService.getTodayPlan()
         val ideas = ideaService.getAll().take(3)
         val providerErrors = mutableListOf<String>()
 
@@ -88,6 +90,7 @@ class CopilotService(
             ?: localAsk(
                 question = question,
                 copilot = copilot,
+                todayPlan = todayPlan,
                 ideas = ideas,
                 fallbackReason = providerErrors.takeIf { it.isNotEmpty() }?.joinToString(" | "),
             )
@@ -367,39 +370,112 @@ class CopilotService(
     private fun localAsk(
         question: String,
         copilot: TodayCopilotResponse,
+        todayPlan: TodayPlanResponse,
         ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
         fallbackReason: String? = null,
     ): CopilotAskResponse {
-        val lowered = question.lowercase()
+        val normalized = question.lowercase().replace(" ", "")
+        val intent = detectIntent(normalized)
+
+        val firstFlow = copilot.todayFlow.firstOrNull()
+        val secondFlow = copilot.todayFlow.getOrNull(1)
         val firstIdea = ideas.firstOrNull()
-        val answer = when {
-            lowered.contains("우선") || lowered.contains("먼저") -> copilot.topPriority
-            lowered.contains("아이디어") -> firstIdea?.let { "'${it.title}'부터 보는 게 좋다. ${it.suggestedActions.firstOrNull() ?: "가장 작은 작업 단위 하나를 먼저 시작해."}" }
-                ?: "지금은 새 아이디어보다 오늘 우선순위 작업부터 끝내는 게 좋다."
-            lowered.contains("일정") || lowered.contains("시간") -> copilot.todayFlow.firstOrNull()?.let { "${it.time}에는 ${it.focus}에 집중하는 흐름이 좋다." }
-                ?: copilot.suggestedNextAction
-            lowered.contains("뉴스") || lowered.contains("헤드라인") -> copilot.overview
-            else -> "${copilot.headline} ${copilot.suggestedNextAction}"
+        val openIdeas = ideas.filter { it.status == "OPEN" || it.status == "IN_PROGRESS" }
+        val topPriority = todayPlan.topPriorities.firstOrNull() ?: firstFlow?.focus ?: "핵심 작업"
+        val firstTimeBlock = todayPlan.timeBlocks.firstOrNull()
+        val answer = when (intent) {
+            LocalIntent.PRIORITY ->
+                "${topPriority}부터 끝내는 게 좋다. ${firstTimeBlock?.start ?: "지금"}부터 60~90분 집중 블록으로 먼저 고정해."
+            LocalIntent.TIME ->
+                "${firstFlow?.time ?: "09:00"}에는 ${firstFlow?.focus ?: topPriority}에 집중하고, ${secondFlow?.time ?: "13:00"}에는 ${secondFlow?.focus ?: "연결 작업"}으로 넘어가는 흐름이 좋다."
+            LocalIntent.IDEA ->
+                firstIdea?.let {
+                    "'${it.title}'는 ${it.status} 상태라 오늘은 ${it.suggestedActions.firstOrNull() ?: "가장 작은 실행 단위 하나"}부터 처리하는 게 좋다."
+                } ?: "아이디어는 새로 확장하기보다 오늘 우선순위 작업을 먼저 닫는 게 좋다."
+            LocalIntent.RISK ->
+                "${copilot.risks.firstOrNull() ?: "중간 집중 흐름이 끊길 리스크"}가 가장 크다. 일정 사이 전환 비용을 줄이도록 작업 개수를 1~2개로 제한하는 게 좋다."
+            LocalIntent.SUMMARY ->
+                "${copilot.headline} 현재 열린 아이디어 ${openIdeas.size}건 기준으로 오늘은 핵심 1건 완료가 최우선이다."
+        }
+
+        val reasoning = when (intent) {
+            LocalIntent.PRIORITY -> listOf(
+                copilot.topPriority,
+                "오늘 최상위 우선순위는 '${topPriority}'로 정렬돼 있다.",
+                "열린 아이디어 ${openIdeas.size}건이라 시작점을 좁혀야 완료율이 올라간다.",
+            )
+            LocalIntent.TIME -> listOf(
+                firstFlow?.let { "${it.time} 블록은 '${it.focus}'에 맞춰져 있다." } ?: "오전 블록을 핵심 작업에 배치하는 게 유리하다.",
+                secondFlow?.let { "${it.time}에는 '${it.focus}'로 전환하는 흐름이다." } ?: "오후 블록은 연계 작업으로 넘기는 편이 안정적이다.",
+                todayPlan.reminders.firstOrNull() ?: "마감 전에 정리 시간을 남겨두는 게 좋다.",
+            )
+            LocalIntent.IDEA -> listOf(
+                firstIdea?.let { "최근 아이디어 '${it.title}'는 ${it.status} 상태다." } ?: "현재 진행 중 아이디어가 적다.",
+                firstIdea?.suggestedActions?.firstOrNull() ?: "작은 실행 단위부터 시작할 때 리스크가 낮다.",
+                "아이디어 확장보다 오늘 우선순위 완료가 전체 효율을 높인다.",
+            )
+            LocalIntent.RISK -> listOf(
+                copilot.risks.firstOrNull() ?: "컨텍스트 전환이 가장 큰 리스크다.",
+                copilot.risks.getOrNull(1) ?: "일정 간격이 짧으면 집중이 깨질 수 있다.",
+                "작업 동시 진행 수를 줄이면 품질과 완료율이 같이 올라간다.",
+            )
+            LocalIntent.SUMMARY -> listOf(
+                copilot.topPriority,
+                copilot.suggestedNextAction,
+                "열린 아이디어 ${openIdeas.size}건 기준으로 실행 순서 고정이 필요하다.",
+            )
+        }
+
+        val suggestedActions = when (intent) {
+            LocalIntent.PRIORITY -> listOf(
+                "${topPriority} 60~90분 집중 블록 바로 시작",
+                "첫 블록 종료 시 결과물 1개(결정/구현) 확정",
+                "남은 작업은 오후 블록으로 재정렬",
+            )
+            LocalIntent.TIME -> listOf(
+                "${firstFlow?.time ?: "09:00"} 블록: ${firstFlow?.focus ?: topPriority}",
+                "${secondFlow?.time ?: "13:00"} 블록: ${secondFlow?.focus ?: "연결 작업"}",
+                "17:30 이전에 다음 액션 3개만 기록",
+            )
+            LocalIntent.IDEA -> listOf(
+                firstIdea?.suggestedActions?.firstOrNull() ?: "아이디어를 실행 단위로 쪼개기",
+                "오늘은 아이디어 1건만 선택해 1차 결과 만들기",
+                "완료 후 상태를 OPEN -> IN_PROGRESS로 갱신",
+            )
+            LocalIntent.RISK -> listOf(
+                "동시에 진행하는 작업을 최대 2개로 제한",
+                "일정 사이 10분 버퍼 확보",
+                "마감 전 30분은 정리/기록 시간으로 고정",
+            )
+            LocalIntent.SUMMARY -> listOf(
+                copilot.suggestedNextAction,
+                firstFlow?.focus ?: "오전 핵심 작업 1건 완료",
+                firstIdea?.suggestedActions?.firstOrNull() ?: "작업 종료 후 다음 액션 기록",
+            )
         }
 
         return CopilotAskResponse(
             question = question,
             answer = answer,
-            reasoning = listOf(
-                copilot.topPriority,
-                copilot.risks.firstOrNull() ?: "중간 컨텍스트 전환을 줄이는 게 좋다.",
-                firstIdea?.let { "최근 아이디어 '${it.title}'는 ${it.status} 상태다." } ?: "최근 아이디어보다 현재 우선순위 작업이 중요하다."
-            ),
-            suggestedActions = listOf(
-                copilot.suggestedNextAction,
-                copilot.todayFlow.firstOrNull()?.focus ?: "오전 집중 작업 확보",
-                firstIdea?.suggestedActions?.firstOrNull() ?: "작업 종료 후 다음 액션 기록"
-            ),
+            reasoning = reasoning,
+            suggestedActions = suggestedActions,
             source = "RULE_BASED",
             fallbackReason = fallbackReason,
             generatedAt = OffsetDateTime.now().toString(),
         )
     }
+
+    private fun detectIntent(normalizedQuestion: String): LocalIntent =
+        when {
+            containsAny(normalizedQuestion, listOf("언제", "시간", "일정", "타임", "오전", "오후")) -> LocalIntent.TIME
+            containsAny(normalizedQuestion, listOf("아이디어", "기능", "기획", "만들", "개발")) -> LocalIntent.IDEA
+            containsAny(normalizedQuestion, listOf("리스크", "위험", "막힐", "문제", "이슈")) -> LocalIntent.RISK
+            containsAny(normalizedQuestion, listOf("요약", "정리", "한줄", "브리핑")) -> LocalIntent.SUMMARY
+            else -> LocalIntent.PRIORITY
+        }
+
+    private fun containsAny(question: String, keywords: List<String>): Boolean =
+        keywords.any { question.contains(it) }
 
     private fun buildFallbackReason(providerName: String, throwable: Throwable): String =
         when (throwable) {
@@ -453,4 +529,12 @@ class CopilotService(
             source = source,
             generatedAt = generatedAt.toString(),
         )
+
+    private enum class LocalIntent {
+        PRIORITY,
+        TIME,
+        IDEA,
+        RISK,
+        SUMMARY,
+    }
 }
