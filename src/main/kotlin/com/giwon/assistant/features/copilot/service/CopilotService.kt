@@ -1,7 +1,6 @@
 package com.giwon.assistant.features.copilot.service
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.giwon.assistant.features.briefing.service.BriefingService
 import com.giwon.assistant.features.briefing.service.CalendarProvider
@@ -19,6 +18,7 @@ import com.giwon.assistant.features.idea.service.AssistantOpenAiProperties
 import com.giwon.assistant.features.planner.service.PlannerService
 import org.springframework.stereotype.Service
 import org.springframework.web.client.RestClient
+import org.springframework.web.client.RestClientResponseException
 import java.time.OffsetDateTime
 import org.springframework.beans.factory.annotation.Value
 
@@ -82,8 +82,13 @@ class CopilotService(
             } else {
                 localAsk(question, copilot, ideas)
             }
-        }.getOrElse {
-            localAsk(question, copilot, ideas)
+        }.getOrElse { throwable ->
+            localAsk(
+                question = question,
+                copilot = copilot,
+                ideas = ideas,
+                fallbackReason = buildFallbackReason(throwable),
+            )
         }
 
         val response = answer.copy(
@@ -184,19 +189,47 @@ class CopilotService(
             "input" to prompt,
         )
 
-        val response = openAiRestClient.post()
+        val responseBody = openAiRestClient.post()
             .uri("/v1/responses")
             .header("Authorization", "Bearer $openAiApiKey")
             .header("Content-Type", "application/json")
             .body(body)
             .retrieve()
-            .body(OpenAiResponse::class.java)
+            .body(String::class.java)
             ?: error("OpenAI response is empty")
 
-        val outputText = response.outputText?.takeIf { it.isNotBlank() }
+        val outputText = extractOpenAiOutputText(responseBody)
             ?: error("OpenAI output_text is empty")
 
         return parseAskOutput(outputText, question)
+    }
+
+    internal fun extractOpenAiOutputText(responseBody: String): String? {
+        val root = objectMapper.readTree(responseBody)
+
+        root.path("output_text").takeIf { !it.isMissingNode && !it.isNull }
+            ?.asText()
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+
+        val contentTexts = root.path("output")
+            .takeIf(JsonNode::isArray)
+            ?.flatMap { outputNode ->
+                outputNode.path("content")
+                    .takeIf(JsonNode::isArray)
+                    ?.mapNotNull { contentNode ->
+                        contentNode.path("text")
+                            .takeIf { !it.isMissingNode && !it.isNull }
+                            ?.asText()
+                            ?.trim()
+                            ?.takeIf(String::isNotBlank)
+                    }
+                    .orEmpty()
+            }
+            .orEmpty()
+
+        return contentTexts.takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
 
     private fun buildAskPrompt(
@@ -257,6 +290,7 @@ class CopilotService(
         question: String,
         copilot: TodayCopilotResponse,
         ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
+        fallbackReason: String? = null,
     ): CopilotAskResponse {
         val lowered = question.lowercase()
         val firstIdea = ideas.firstOrNull()
@@ -284,9 +318,24 @@ class CopilotService(
                 firstIdea?.suggestedActions?.firstOrNull() ?: "작업 종료 후 다음 액션 기록"
             ),
             source = "RULE_BASED",
+            fallbackReason = fallbackReason,
             generatedAt = OffsetDateTime.now().toString(),
         )
     }
+
+    private fun buildFallbackReason(throwable: Throwable): String =
+        when (throwable) {
+            is RestClientResponseException -> {
+                val statusCode = throwable.statusCode.value()
+                when (statusCode) {
+                    401 -> "OpenAI 인증 실패(401)"
+                    429 -> "OpenAI rate limit 또는 quota 초과(429)"
+                    in 500..599 -> "OpenAI 서버 오류(${statusCode})"
+                    else -> "OpenAI 요청 실패(${statusCode})"
+                }
+            }
+            else -> "OpenAI 응답 처리 실패"
+        }
 
     private fun extractBulletSection(lines: List<String>, header: String): List<String> {
         val startIndex = lines.indexOfFirst { it == header }
@@ -327,9 +376,3 @@ class CopilotService(
             generatedAt = generatedAt.toString(),
         )
 }
-
-@JsonIgnoreProperties(ignoreUnknown = true)
-private data class OpenAiResponse(
-    @JsonProperty("output_text")
-    val outputText: String?,
-)

@@ -6,5 +6,6 @@ data class CopilotAskResponse(
     val reasoning: List<String>,
     val suggestedActions: List<String>,
     val source: String,
+    val fallbackReason: String? = null,
     val generatedAt: String,
 )
