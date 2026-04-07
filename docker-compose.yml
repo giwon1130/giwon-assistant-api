@@ -23,6 +23,8 @@ services:
       ASSISTANT_DB_URL: jdbc:postgresql://postgres:5432/giwon_assistant
       ASSISTANT_DB_USERNAME: postgres
       ASSISTANT_DB_PASSWORD: postgres
+      ASSISTANT_INTEGRATIONS_OPENAI_ENABLED: ${ASSISTANT_INTEGRATIONS_OPENAI_ENABLED:-false}
+      ASSISTANT_OPENAI_MODEL: ${ASSISTANT_OPENAI_MODEL:-gpt-4.1}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:
       - "8080:8080"

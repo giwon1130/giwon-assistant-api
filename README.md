@@ -50,6 +50,15 @@ API 키가 없거나 실패하면 mock 응답으로 fallback 한다.
 - 기본 프로필은 파일 기반 H2를 사용한다.
 - 그래서 DB를 따로 띄우지 않아도 아이디어/브리핑 이력이 로컬 파일에 저장된다.
 
+OpenAI 답변을 실제로 쓰려면:
+
+```bash
+export OPENAI_API_KEY=your_key
+export ASSISTANT_INTEGRATIONS_OPENAI_ENABLED=true
+export ASSISTANT_OPENAI_MODEL=gpt-4.1
+./gradlew bootRun
+```
+
 ## Docker 실행
 ```bash
 docker compose up -d --build
@@ -59,6 +68,14 @@ docker compose up -d --build
 - 기본 포트:
   - API: `8080`
   - PostgreSQL: `5436`
+
+OpenAI를 Docker에서 켜려면 `.env` 또는 셸 환경변수에 아래 값을 넣으면 된다.
+
+```bash
+OPENAI_API_KEY=your_key
+ASSISTANT_INTEGRATIONS_OPENAI_ENABLED=true
+ASSISTANT_OPENAI_MODEL=gpt-4.1
+```
 
 ## CORS
 - `http://localhost:4173`
@@ -112,4 +129,5 @@ curl -X POST http://localhost:8080/api/v1/ideas \
 - 날씨 데이터는 Open-Meteo Forecast API를 기준으로 연동했다.
 - 캘린더는 Google Calendar provider를 붙일 수 있도록 구조를 먼저 분리했다.
 - OpenAI 연동은 공식 Responses API 기준으로 붙였다.
+- `ASSISTANT_INTEGRATIONS_OPENAI_ENABLED=true`일 때만 실제 OpenAI 응답을 사용한다.
 - 뉴스 연동은 Google News RSS 기반으로 붙였고, 비활성화 시 mock headline 으로 fallback 한다.
