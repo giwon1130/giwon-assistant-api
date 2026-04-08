@@ -2,6 +2,7 @@ package com.giwon.assistant.features.copilot.dto
 
 data class TodayCopilotResponse(
     val generatedAt: String,
+    val operatingMode: CopilotOperatingMode,
     val headline: String,
     val overview: String,
     val topPriority: String,
@@ -14,6 +15,13 @@ data class TodayCopilotResponse(
     val risks: List<String>,
     val recommendedIdeas: List<CopilotIdeaAction>,
     val todayFlow: List<CopilotTimeSuggestion>,
+)
+
+data class CopilotOperatingMode(
+    val code: String,
+    val title: String,
+    val summary: String,
+    val recommendedBlockMinutes: Int,
 )
 
 data class CopilotIdeaAction(

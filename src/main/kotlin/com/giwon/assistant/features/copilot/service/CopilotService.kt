@@ -9,6 +9,7 @@ import com.giwon.assistant.features.briefing.service.WeatherProvider
 import com.giwon.assistant.features.checkin.service.DailyConditionCheckinService
 import com.giwon.assistant.features.copilot.dto.CopilotAskResponse
 import com.giwon.assistant.features.copilot.dto.CopilotHistoryResponse
+import com.giwon.assistant.features.copilot.dto.CopilotOperatingMode
 import com.giwon.assistant.features.copilot.dto.CopilotSuggestedActionPlan
 import com.giwon.assistant.features.copilot.dto.TodayCopilotResponse
 import com.giwon.assistant.features.copilot.dto.CopilotIdeaAction
@@ -62,9 +63,11 @@ class CopilotService(
         val firstHeadline = briefing.headlines.firstOrNull()
         val primaryTask = briefing.tasks.firstOrNull()?.title ?: todayPlan.topPriorities.firstOrNull() ?: "핵심 작업 정리"
         val topPriority = buildTopPriority(primaryTask, firstCalendarItem?.title)
+        val operatingMode = buildOperatingMode(dailyRoutine, dailyCondition)
 
         return TodayCopilotResponse(
             generatedAt = OffsetDateTime.now().toString(),
+            operatingMode = operatingMode,
             headline = buildHeadline(primaryTask, dailyRoutine, dailyCondition.readinessScore),
             overview = buildOverview(
                 weatherCondition = briefing.weather.condition,
@@ -95,6 +98,44 @@ class CopilotService(
             todayFlow = buildTodayFlow(todayPlan.topPriorities, briefing.calendar.map { it.time to it.title })
         )
     }
+
+    private fun buildOperatingMode(
+        dailyRoutine: com.giwon.assistant.features.routine.dto.DailyRoutineResponse,
+        dailyCondition: com.giwon.assistant.features.checkin.dto.DailyConditionCheckinResponse,
+    ): CopilotOperatingMode =
+        when {
+            dailyCondition.readinessScore < 45 || dailyRoutine.riskLevel == "HIGH" ->
+                CopilotOperatingMode(
+                    code = "RESET",
+                    title = "Reset Mode",
+                    summary = "지금은 생산성 극대화보다 컨디션 복구와 기본 루틴 정리가 우선이야.",
+                    recommendedBlockMinutes = 20,
+                )
+
+            dailyRoutine.recoveryScore < 45 || dailyCondition.sleepQuality <= 2 ->
+                CopilotOperatingMode(
+                    code = "RECOVERY",
+                    title = "Recovery Mode",
+                    summary = "회복 점수가 낮아. 긴 작업보다 회복 블록과 가벼운 정리 작업이 맞는다.",
+                    recommendedBlockMinutes = 30,
+                )
+
+            dailyCondition.readinessScore >= 75 && dailyRoutine.energyScore >= 70 && dailyRoutine.completedCount >= 2 ->
+                CopilotOperatingMode(
+                    code = "DEEP_FOCUS",
+                    title = "Deep Focus Mode",
+                    summary = "루틴과 컨디션이 안정적이라 지금은 길고 무거운 집중 블록을 잡아도 된다.",
+                    recommendedBlockMinutes = 90,
+                )
+
+            else ->
+                CopilotOperatingMode(
+                    code = "STEADY",
+                    title = "Steady Mode",
+                    summary = "기본 흐름은 괜찮아. 45~60분 단위로 끊어서 안정적으로 진행하는 게 좋다.",
+                    recommendedBlockMinutes = 50,
+                )
+        }
 
     fun ask(question: String): CopilotAskResponse {
         val copilot = getTodayCopilot()

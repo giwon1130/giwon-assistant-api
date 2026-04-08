@@ -43,6 +43,8 @@ class CopilotControllerTest {
         mockMvc.perform(get("/api/v1/copilot/today"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.operatingMode.code").exists())
+            .andExpect(jsonPath("$.data.operatingMode.title").exists())
             .andExpect(jsonPath("$.data.headline").exists())
             .andExpect(jsonPath("$.data.topPriority").exists())
             .andExpect(jsonPath("$.data.routineSummary").exists())
