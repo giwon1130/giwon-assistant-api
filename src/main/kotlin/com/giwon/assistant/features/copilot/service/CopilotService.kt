@@ -8,6 +8,7 @@ import com.giwon.assistant.features.briefing.service.NewsProvider
 import com.giwon.assistant.features.briefing.service.WeatherProvider
 import com.giwon.assistant.features.copilot.dto.CopilotAskResponse
 import com.giwon.assistant.features.copilot.dto.CopilotHistoryResponse
+import com.giwon.assistant.features.copilot.dto.CopilotSuggestedActionPlan
 import com.giwon.assistant.features.copilot.dto.TodayCopilotResponse
 import com.giwon.assistant.features.copilot.dto.CopilotIdeaAction
 import com.giwon.assistant.features.copilot.dto.CopilotTimeSuggestion
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Service
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientResponseException
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import org.springframework.beans.factory.annotation.Value
 
 @Service
@@ -347,22 +349,25 @@ class CopilotService(
 
     private fun parseAskOutput(outputText: String, question: String, source: String): CopilotAskResponse {
         val lines = outputText.lines().map { it.trim() }.filter { it.isNotBlank() }
+        val intent = detectIntent(question.lowercase().replace(" ", ""))
         val answer = lines.firstOrNull { it.startsWith("ANSWER:") }
             ?.substringAfter("ANSWER:")
             ?.trim()
             ?.ifBlank { outputText.take(160) }
             ?: outputText.take(160)
+        val suggestedActions = extractBulletSection(lines, "SUGGESTED_ACTIONS:").ifEmpty {
+            listOf("우선순위 작업 먼저 진행", "중요 결정 1건 확정", "끝난 뒤 다음 액션 정리")
+        }
 
         return CopilotAskResponse(
             question = question,
             answer = answer,
-            intent = detectIntent(question.lowercase().replace(" ", "")).name,
+            intent = intent.name,
             reasoning = extractBulletSection(lines, "REASONING:").ifEmpty {
                 listOf("오늘 브리핑과 우선순위 흐름을 기준으로 답변했습니다.")
             },
-            suggestedActions = extractBulletSection(lines, "SUGGESTED_ACTIONS:").ifEmpty {
-                listOf("우선순위 작업 먼저 진행", "중요 결정 1건 확정", "끝난 뒤 다음 액션 정리")
-            },
+            suggestedActions = suggestedActions,
+            suggestedActionPlans = buildSuggestedActionPlans(suggestedActions, intent),
             source = source,
             generatedAt = OffsetDateTime.now().toString(),
         )
@@ -461,11 +466,78 @@ class CopilotService(
             intent = intent.name,
             reasoning = reasoning,
             suggestedActions = suggestedActions,
+            suggestedActionPlans = buildSuggestedActionPlans(suggestedActions, intent),
             source = "RULE_BASED",
             fallbackReason = fallbackReason,
             generatedAt = OffsetDateTime.now().toString(),
         )
     }
+
+    private fun buildSuggestedActionPlans(
+        suggestedActions: List<String>,
+        intent: LocalIntent,
+    ): List<CopilotSuggestedActionPlan> {
+        val now = OffsetDateTime.now(ZoneOffset.UTC)
+
+        return suggestedActions.mapIndexed { index, action ->
+            val normalized = action.lowercase()
+            val priority = when {
+                containsAny(normalized, listOf("바로", "우선", "핵심", "결정", "정리")) -> "HIGH"
+                intent == LocalIntent.RISK -> "HIGH"
+                intent == LocalIntent.TIME || intent == LocalIntent.IDEA -> if (index == 0) "HIGH" else "MEDIUM"
+                else -> if (index == 0) "HIGH" else if (index == 1) "MEDIUM" else "LOW"
+            }
+
+            val dueDate = when {
+                containsAny(normalized, listOf("바로", "지금", "오늘")) -> nextDueTime(now, 18, 0)
+                containsAny(normalized, listOf("오후", "17:30", "정리", "기록")) -> nextDueTime(now, 17, 30)
+                intent == LocalIntent.PRIORITY || intent == LocalIntent.RISK ->
+                    if (index == 0) nextDueTime(now, 18, 0)
+                    else nextDueTime(now.plusDays(1), 9, 0)
+                intent == LocalIntent.TIME ->
+                    if (index == 0) nextDueTime(now, 13, 0)
+                    else nextDueTime(now, 17, 30)
+                intent == LocalIntent.IDEA ->
+                    nextDueTime(now.plusDays(index.toLong()), 14, 0)
+                else ->
+                    if (index == 0) nextDueTime(now.plusDays(1), 10, 0)
+                    else nextDueTime(now.plusDays(2), 18, 0)
+            }
+
+            CopilotSuggestedActionPlan(
+                title = action,
+                priority = priority,
+                dueDate = dueDate.toString(),
+                dueLabel = buildDueLabel(dueDate, now),
+                reason = buildSuggestedActionReason(intent, index, action),
+            )
+        }
+    }
+
+    private fun nextDueTime(base: OffsetDateTime, hour: Int, minute: Int): OffsetDateTime {
+        val candidate = base.withHour(hour).withMinute(minute).withSecond(0).withNano(0)
+        return if (candidate.isAfter(OffsetDateTime.now(ZoneOffset.UTC))) candidate else candidate.plusDays(1)
+    }
+
+    private fun buildDueLabel(dueDate: OffsetDateTime, now: OffsetDateTime): String {
+        val dueLocalDate = dueDate.toLocalDate()
+        val nowLocalDate = now.toLocalDate()
+
+        return when {
+            dueLocalDate.isEqual(nowLocalDate) -> "오늘 ${dueDate.hour.toString().padStart(2, '0')}:${dueDate.minute.toString().padStart(2, '0')}"
+            dueLocalDate.isEqual(nowLocalDate.plusDays(1)) -> "내일 ${dueDate.hour.toString().padStart(2, '0')}:${dueDate.minute.toString().padStart(2, '0')}"
+            else -> "${dueDate.monthValue}/${dueDate.dayOfMonth} ${dueDate.hour.toString().padStart(2, '0')}:${dueDate.minute.toString().padStart(2, '0')}"
+        }
+    }
+
+    private fun buildSuggestedActionReason(intent: LocalIntent, index: Int, action: String): String =
+        when (intent) {
+            LocalIntent.PRIORITY -> if (index == 0) "오늘 최우선 작업 흐름과 직접 연결되는 액션이라 먼저 처리하는 게 좋다." else "핵심 작업 다음 순서로 이어붙이기 좋은 작업이다."
+            LocalIntent.TIME -> "시간 블록 기준으로 바로 배치할 수 있는 액션이다."
+            LocalIntent.IDEA -> if (index == 0) "아이디어를 실제 작업으로 전환하는 첫 단계라 빠르게 검증하는 게 좋다." else "확장 전에 작은 단위로 검증하기 좋은 액션이다."
+            LocalIntent.RISK -> "리스크를 줄이기 위해 오늘 안에 정리하거나 고정해두는 편이 좋다."
+            LocalIntent.SUMMARY -> if (action.contains("정리")) "마감 전 정리 성격이 강해서 뒤 블록에 두는 게 자연스럽다." else "오늘 전체 흐름을 닫는 데 필요한 액션이다."
+        }
 
     private fun detectIntent(normalizedQuestion: String): LocalIntent =
         when {

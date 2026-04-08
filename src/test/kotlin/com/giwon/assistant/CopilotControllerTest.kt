@@ -54,6 +54,9 @@ class CopilotControllerTest {
             .andExpect(jsonPath("$.data.answer").exists())
             .andExpect(jsonPath("$.data.reasoning[0]").exists())
             .andExpect(jsonPath("$.data.suggestedActions[0]").exists())
+            .andExpect(jsonPath("$.data.suggestedActionPlans[0].title").exists())
+            .andExpect(jsonPath("$.data.suggestedActionPlans[0].priority").exists())
+            .andExpect(jsonPath("$.data.suggestedActionPlans[0].dueLabel").exists())
     }
 
     @Test
