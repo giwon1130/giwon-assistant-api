@@ -47,6 +47,9 @@ class CopilotControllerTest {
             .andExpect(jsonPath("$.data.topPriority").exists())
             .andExpect(jsonPath("$.data.routineSummary").exists())
             .andExpect(jsonPath("$.data.routineSuggestedAction").exists())
+            .andExpect(jsonPath("$.data.conditionSummary").exists())
+            .andExpect(jsonPath("$.data.conditionSuggestedAction").exists())
+            .andExpect(jsonPath("$.data.conditionReadinessScore").exists())
             .andExpect(jsonPath("$.data.recommendedIdeas[0].title").exists())
             .andExpect(jsonPath("$.data.todayFlow.length()").value(3))
     }

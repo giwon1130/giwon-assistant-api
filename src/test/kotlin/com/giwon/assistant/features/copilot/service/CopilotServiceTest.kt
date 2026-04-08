@@ -5,6 +5,7 @@ import com.giwon.assistant.features.briefing.service.BriefingService
 import com.giwon.assistant.features.briefing.service.CalendarProvider
 import com.giwon.assistant.features.briefing.service.NewsProvider
 import com.giwon.assistant.features.briefing.service.WeatherProvider
+import com.giwon.assistant.features.checkin.service.DailyConditionCheckinService
 import com.giwon.assistant.features.copilot.repository.CopilotHistoryRepository
 import com.giwon.assistant.features.idea.service.AssistantGeminiProperties
 import com.giwon.assistant.features.idea.service.AssistantOpenAiProperties
@@ -22,6 +23,7 @@ class CopilotServiceTest {
         plannerService = mock(PlannerService::class.java),
         ideaService = mock(IdeaService::class.java),
         dailyRoutineService = mock(DailyRoutineService::class.java),
+        dailyConditionCheckinService = mock(DailyConditionCheckinService::class.java),
         copilotHistoryRepository = mock(CopilotHistoryRepository::class.java),
         weatherProvider = mock(WeatherProvider::class.java),
         calendarProvider = mock(CalendarProvider::class.java),

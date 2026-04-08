@@ -6,6 +6,7 @@ import com.giwon.assistant.features.briefing.service.BriefingService
 import com.giwon.assistant.features.briefing.service.CalendarProvider
 import com.giwon.assistant.features.briefing.service.NewsProvider
 import com.giwon.assistant.features.briefing.service.WeatherProvider
+import com.giwon.assistant.features.checkin.service.DailyConditionCheckinService
 import com.giwon.assistant.features.copilot.dto.CopilotAskResponse
 import com.giwon.assistant.features.copilot.dto.CopilotHistoryResponse
 import com.giwon.assistant.features.copilot.dto.CopilotSuggestedActionPlan
@@ -33,6 +34,7 @@ class CopilotService(
     private val plannerService: PlannerService,
     private val ideaService: IdeaService,
     private val dailyRoutineService: DailyRoutineService,
+    private val dailyConditionCheckinService: DailyConditionCheckinService,
     private val copilotHistoryRepository: CopilotHistoryRepository,
     private val weatherProvider: WeatherProvider,
     private val calendarProvider: CalendarProvider,
@@ -51,6 +53,7 @@ class CopilotService(
         val briefing = briefingService.getTodayBriefing(weatherProvider, calendarProvider, newsProvider)
         val todayPlan = plannerService.getTodayPlan()
         val dailyRoutine = dailyRoutineService.getDailyRoutine(null)
+        val dailyCondition = dailyConditionCheckinService.getCondition(null)
         val activeIdeas = ideaService.getAll()
             .filter { it.status != "DONE" }
             .take(3)
@@ -62,20 +65,25 @@ class CopilotService(
 
         return TodayCopilotResponse(
             generatedAt = OffsetDateTime.now().toString(),
-            headline = buildHeadline(primaryTask, dailyRoutine),
+            headline = buildHeadline(primaryTask, dailyRoutine, dailyCondition.readinessScore),
             overview = buildOverview(
                 weatherCondition = briefing.weather.condition,
                 temperature = briefing.weather.temperatureCelsius,
                 firstEventTitle = firstCalendarItem?.title,
                 firstHeadlineTitle = firstHeadline?.title,
                 dailyRoutineSummary = dailyRoutine.insight,
+                conditionSummary = dailyCondition.summary,
             ),
-            topPriority = buildTopPriority(topPriority, dailyRoutine),
-            suggestedNextAction = buildSuggestedNextAction(primaryTask, activeIdeas.firstOrNull()?.title, dailyRoutine),
+            topPriority = buildTopPriority(topPriority, dailyRoutine, dailyCondition.readinessScore),
+            suggestedNextAction = buildSuggestedNextAction(primaryTask, activeIdeas.firstOrNull()?.title, dailyRoutine, dailyCondition),
             routineSummary = dailyRoutine.insight,
             routineSuggestedAction = dailyRoutine.suggestedActions.firstOrNull()
                 ?: "오늘 남은 루틴 1개를 먼저 닫고 메인 작업으로 넘어가기",
-            risks = buildRisks(briefing, todayPlan, dailyRoutine),
+            conditionSummary = dailyCondition.summary,
+            conditionSuggestedAction = dailyCondition.suggestions.firstOrNull()
+                ?: "컨디션 점수를 먼저 체크하고 오늘 작업 강도 조절하기",
+            conditionReadinessScore = dailyCondition.readinessScore,
+            risks = buildRisks(briefing, todayPlan, dailyRoutine, dailyCondition),
             recommendedIdeas = activeIdeas.map { idea ->
                 CopilotIdeaAction(
                     id = idea.id,
@@ -125,8 +133,11 @@ class CopilotService(
     private fun buildHeadline(
         primaryTask: String,
         dailyRoutine: com.giwon.assistant.features.routine.dto.DailyRoutineResponse,
+        readinessScore: Int,
     ): String =
-        if (dailyRoutine.completedCount == 0) {
+        if (readinessScore < 45) {
+            "오늘은 ${primaryTask}를 바로 밀기보다 컨디션 복구 후 짧은 집중 블록으로 가는 편이 안전하다."
+        } else if (dailyRoutine.completedCount == 0) {
             "오늘은 ${primaryTask} 전에 기본 루틴 1개부터 닫는 흐름이 더 안정적이다."
         } else {
             "오늘은 ${primaryTask}부터 끝내는 흐름이 가장 효율적이다."
@@ -138,18 +149,22 @@ class CopilotService(
         firstEventTitle: String?,
         firstHeadlineTitle: String?,
         dailyRoutineSummary: String,
+        conditionSummary: String,
     ): String {
         val eventPart = firstEventTitle?.let { "첫 일정은 ${it}이고" } ?: "확정된 일정은 많지 않고"
         val headlinePart = firstHeadlineTitle?.let { "가장 먼저 볼 뉴스는 '${it}'이다." } ?: "뉴스 이슈는 크지 않다."
-        return "현재 날씨는 ${weatherCondition}, ${temperature}도 수준이다. ${eventPart} 오늘은 오전 집중도를 지키는 게 중요하다. ${headlinePart} 루틴 기준으로는 ${dailyRoutineSummary}"
+        return "현재 날씨는 ${weatherCondition}, ${temperature}도 수준이다. ${eventPart} 오늘은 오전 집중도를 지키는 게 중요하다. ${headlinePart} 루틴 기준으로는 ${dailyRoutineSummary} 컨디션 기준으로는 ${conditionSummary}"
     }
 
     private fun buildSuggestedNextAction(
         primaryTask: String,
         firstIdeaTitle: String?,
         dailyRoutine: com.giwon.assistant.features.routine.dto.DailyRoutineResponse,
+        dailyCondition: com.giwon.assistant.features.checkin.dto.DailyConditionCheckinResponse,
     ): String =
-        if (dailyRoutine.completedCount < 2 && dailyRoutine.suggestedActions.isNotEmpty()) {
+        if (dailyCondition.readinessScore < 45) {
+            "${dailyCondition.suggestions.firstOrNull() ?: "컨디션 점수 다시 체크"}부터 처리한 뒤 짧은 작업 블록으로 넘어가는 게 좋다."
+        } else if (dailyRoutine.completedCount < 2 && dailyRoutine.suggestedActions.isNotEmpty()) {
             "${dailyRoutine.suggestedActions.first()}부터 처리한 뒤 ${primaryTask} 블록으로 넘어가는 게 좋다."
         } else if (firstIdeaTitle == null) {
             "${primaryTask} 관련 작업을 90분 블록으로 먼저 확보하고, 끝난 뒤 브리핑을 한 번 더 갱신한다."
@@ -160,8 +175,11 @@ class CopilotService(
     private fun buildTopPriority(
         existingTopPriority: String,
         dailyRoutine: com.giwon.assistant.features.routine.dto.DailyRoutineResponse,
+        readinessScore: Int,
     ): String =
-        if (dailyRoutine.completedCount == 0) {
+        if (readinessScore < 45) {
+            "지금은 강한 몰입보다 회복 후 25분 단위 집중으로 재배치하는 게 맞다. $existingTopPriority"
+        } else if (dailyRoutine.completedCount == 0) {
             "메인 작업 전에 비타민, 물, 약 복용 같은 기본 루틴 1개를 먼저 닫고 ${existingTopPriority}"
         } else {
             existingTopPriority
@@ -171,6 +189,7 @@ class CopilotService(
         briefing: com.giwon.assistant.features.briefing.dto.TodayBriefingResponse,
         todayPlan: com.giwon.assistant.features.planner.dto.TodayPlanResponse,
         dailyRoutine: com.giwon.assistant.features.routine.dto.DailyRoutineResponse,
+        dailyCondition: com.giwon.assistant.features.checkin.dto.DailyConditionCheckinResponse,
     ): List<String> {
         val calendarRisk = if (briefing.calendar.size >= 2) {
             "일정이 ${briefing.calendar.size}건이라 중간에 집중 흐름이 끊길 수 있다."
@@ -185,10 +204,16 @@ class CopilotService(
         } else {
             "루틴은 유지되고 있지만 저녁 회복 루틴이 비면 마감 집중도가 떨어질 수 있다."
         }
+        val conditionRisk = when {
+            dailyCondition.readinessScore < 45 -> "컨디션 준비도가 낮아서 긴 집중 블록을 바로 잡으면 효율이 급격히 떨어질 수 있다."
+            dailyCondition.stress >= 4 -> "스트레스 점수가 높아서 계획보다 처리량을 줄여야 할 수 있다."
+            else -> "컨디션은 안정적이지만 오후 이후 피로 누적을 따로 관리해야 한다."
+        }
         return listOf(
             calendarRisk,
             reminderRisk,
             routineRisk,
+            conditionRisk,
             "새 아이디어를 바로 구현으로 넘기기보다 기존 진행 중 항목부터 닫는 편이 효율적이다."
         )
     }
