@@ -8,12 +8,30 @@ data class DailyRoutineResponse(
     val streakDays: Int,
     val weeklyCompletionRate: Int,
     val weeklyCompletedDays: Int,
+    val energyScore: Int,
+    val recoveryScore: Int,
+    val riskLevel: String,
     val insight: String,
     val suggestedActions: List<String>,
+    val signals: List<DailyRoutineSignalResponse>,
+    val focusMode: DailyRoutineFocusModeResponse,
     val reminders: List<DailyRoutineReminderResponse>,
     val recentDays: List<DailyRoutineDaySummaryResponse>,
     val categoryStats: List<DailyRoutineCategoryStatResponse>,
     val items: List<DailyRoutineItemResponse>,
+)
+
+data class DailyRoutineSignalResponse(
+    val label: String,
+    val status: String,
+    val detail: String,
+)
+
+data class DailyRoutineFocusModeResponse(
+    val title: String,
+    val durationMinutes: Int,
+    val summary: String,
+    val trigger: String,
 )
 
 data class DailyRoutineReminderResponse(
