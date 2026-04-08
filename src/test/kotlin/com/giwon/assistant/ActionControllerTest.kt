@@ -50,6 +50,13 @@ class ActionControllerTest {
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data[0].id").exists())
 
+        mockMvc.perform(get("/api/v1/actions/summary"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.totalCount").value(1))
+            .andExpect(jsonPath("$.data.openCount").value(1))
+            .andExpect(jsonPath("$.data.highPriorityOpenCount").value(1))
+
         mockMvc.perform(
             patch("/api/v1/actions/$actionId")
                 .contentType(MediaType.APPLICATION_JSON)

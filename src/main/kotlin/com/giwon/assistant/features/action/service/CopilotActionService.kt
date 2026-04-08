@@ -1,6 +1,7 @@
 package com.giwon.assistant.features.action.service
 
 import com.giwon.assistant.features.action.dto.CopilotActionResponse
+import com.giwon.assistant.features.action.dto.CopilotActionSummaryResponse
 import com.giwon.assistant.features.action.dto.CreateCopilotActionRequest
 import com.giwon.assistant.features.action.dto.UpdateCopilotActionRequest
 import com.giwon.assistant.features.action.entity.CopilotActionEntity
@@ -35,6 +36,30 @@ class CopilotActionService(
         return actions
             .filter { normalized == null || it.status == normalized }
             .map { it.toResponse() }
+    }
+
+    fun getSummary(): CopilotActionSummaryResponse {
+        val now = OffsetDateTime.now()
+        val actions = copilotActionRepository.findAll()
+        val openActions = actions.filter { it.status == "OPEN" }
+        val doneCount = actions.count { it.status == "DONE" }
+        val overdueCount = openActions.count { it.dueDate != null && it.dueDate!!.isBefore(now) }
+        val dueSoonCount = openActions.count {
+            val dueDate = it.dueDate ?: return@count false
+            !dueDate.isBefore(now) && dueDate.isBefore(now.plusHours(24))
+        }
+        val highPriorityOpenCount = openActions.count { it.priority == "HIGH" }
+        val completionRate = if (actions.isEmpty()) 0 else ((doneCount.toDouble() / actions.size) * 100).toInt()
+
+        return CopilotActionSummaryResponse(
+            totalCount = actions.size,
+            openCount = openActions.size,
+            doneCount = doneCount,
+            overdueCount = overdueCount,
+            dueSoonCount = dueSoonCount,
+            highPriorityOpenCount = highPriorityOpenCount,
+            completionRate = completionRate,
+        )
     }
 
     fun updateStatus(actionId: String, status: String): CopilotActionResponse {

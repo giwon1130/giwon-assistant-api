@@ -2,6 +2,7 @@ package com.giwon.assistant.features.action.controller
 
 import com.giwon.assistant.common.ApiResponse
 import com.giwon.assistant.features.action.dto.CopilotActionResponse
+import com.giwon.assistant.features.action.dto.CopilotActionSummaryResponse
 import com.giwon.assistant.features.action.dto.CreateCopilotActionRequest
 import com.giwon.assistant.features.action.dto.UpdateCopilotActionRequest
 import com.giwon.assistant.features.action.dto.UpdateCopilotActionStatusRequest
@@ -28,6 +29,10 @@ class CopilotActionController(
     @GetMapping
     fun getAll(@RequestParam(required = false) status: String?): ApiResponse<List<CopilotActionResponse>> =
         ApiResponse.ok(copilotActionService.getAll(status))
+
+    @GetMapping("/summary")
+    fun getSummary(): ApiResponse<CopilotActionSummaryResponse> =
+        ApiResponse.ok(copilotActionService.getSummary())
 
     @PatchMapping("/{actionId}/status")
     fun updateStatus(
