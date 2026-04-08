@@ -10,9 +10,17 @@ data class DailyRoutineResponse(
     val weeklyCompletedDays: Int,
     val insight: String,
     val suggestedActions: List<String>,
+    val reminders: List<DailyRoutineReminderResponse>,
     val recentDays: List<DailyRoutineDaySummaryResponse>,
     val categoryStats: List<DailyRoutineCategoryStatResponse>,
     val items: List<DailyRoutineItemResponse>,
+)
+
+data class DailyRoutineReminderResponse(
+    val itemKey: String,
+    val label: String,
+    val reminderTime: String,
+    val reason: String,
 )
 
 data class DailyRoutineDaySummaryResponse(

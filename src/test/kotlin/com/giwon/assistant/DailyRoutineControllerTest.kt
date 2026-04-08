@@ -26,6 +26,7 @@ class DailyRoutineControllerTest {
             .andExpect(jsonPath("$.data.weeklyCompletionRate").exists())
             .andExpect(jsonPath("$.data.insight").exists())
             .andExpect(jsonPath("$.data.suggestedActions").isArray)
+            .andExpect(jsonPath("$.data.reminders").isArray)
             .andExpect(jsonPath("$.data.recentDays.length()").value(7))
             .andExpect(jsonPath("$.data.categoryStats[0].category").exists())
             .andExpect(jsonPath("$.data.items[0].key").exists())

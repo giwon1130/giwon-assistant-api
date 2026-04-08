@@ -3,6 +3,7 @@ package com.giwon.assistant.features.routine.service
 import com.giwon.assistant.features.routine.dto.DailyRoutineCategoryStatResponse
 import com.giwon.assistant.features.routine.dto.DailyRoutineDaySummaryResponse
 import com.giwon.assistant.features.routine.dto.DailyRoutineItemResponse
+import com.giwon.assistant.features.routine.dto.DailyRoutineReminderResponse
 import com.giwon.assistant.features.routine.dto.DailyRoutineResponse
 import com.giwon.assistant.features.routine.dto.UpdateDailyRoutineRequest
 import com.giwon.assistant.features.routine.entity.DailyRoutineCheckEntity
@@ -121,6 +122,14 @@ class DailyRoutineService(
             if (incompleteItems.any { it.category == "HEALTH" }) add("건강 루틴 1개를 오늘 액션으로 전환")
             if (weeklyCompletionRate < 40) add("Daily Check를 오전/저녁 고정 체크로 묶기")
         }.distinct()
+        val reminders = incompleteItems.take(4).map { item ->
+            DailyRoutineReminderResponse(
+                itemKey = item.key,
+                label = item.label,
+                reminderTime = buildReminderTime(item.targetTime),
+                reason = buildReminderReason(item.category, item.targetTime),
+            )
+        }
 
         return DailyRoutineResponse(
             date = targetDate.toString(),
@@ -132,11 +141,32 @@ class DailyRoutineService(
             weeklyCompletedDays = weeklyCompletedDays,
             insight = insight,
             suggestedActions = suggestedActions,
+            reminders = reminders,
             recentDays = recentDays,
             categoryStats = categoryStats,
             items = items,
         )
     }
+
+    private fun buildReminderTime(targetTime: String): String =
+        when (targetTime) {
+            "아침" -> "09:00"
+            "점심" -> "12:30"
+            "오후" -> "15:00"
+            "저녁" -> "18:30"
+            "밤" -> "22:00"
+            "하루" -> "20:00"
+            "아침/저녁" -> "19:00"
+            else -> "18:00"
+        }
+
+    private fun buildReminderReason(category: String, targetTime: String): String =
+        when (category) {
+            "NUTRITION" -> "식사 로그가 비면 하루 컨디션 기록이 끊기기 쉬워서 ${targetTime} 전에 한 번 더 체크하는 게 좋다."
+            "HEALTH" -> "건강 루틴은 하루가 밀리면 연속성이 끊겨서 ${targetTime} 기준으로 다시 챙기는 편이 좋다."
+            "RECOVERY" -> "회복 루틴은 밤으로 밀릴수록 빠뜨리기 쉬워서 고정 리마인더가 필요하다."
+            else -> "에너지 루틴은 한 번 놓치면 그대로 지나가기 쉬워서 ${targetTime} 전에 다시 보는 게 좋다."
+        }
 
     private fun calculateStreak(targetDate: LocalDate): Int {
         val checks = dailyRoutineCheckRepository.findAllByCheckDateBetween(targetDate.minusDays(13), targetDate)
