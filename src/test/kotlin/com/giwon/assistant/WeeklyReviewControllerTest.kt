@@ -7,6 +7,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -46,11 +47,18 @@ class WeeklyReviewControllerTest {
                 )
         ).andExpect(status().isOk)
 
+        mockMvc.perform(
+            patch("/api/v1/routines/daily/VITAMIN")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"completed":true}""")
+        ).andExpect(status().isOk)
+
         mockMvc.perform(get("/api/v1/reviews/weekly"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.summary").exists())
             .andExpect(jsonPath("$.data.metrics.questionsAsked").exists())
+            .andExpect(jsonPath("$.data.metrics.routineChecksCompleted").value(1))
             .andExpect(jsonPath("$.data.wins[0]").exists())
             .andExpect(jsonPath("$.data.nextFocus[0]").exists())
 

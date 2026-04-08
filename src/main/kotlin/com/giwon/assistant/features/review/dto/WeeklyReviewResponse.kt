@@ -16,4 +16,6 @@ data class WeeklyReviewMetrics(
     val actionsCompleted: Int,
     val openActions: Int,
     val ideasCaptured: Int,
+    val routineChecksCompleted: Int,
+    val routineCompletionDays: Int,
 )
