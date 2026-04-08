@@ -356,6 +356,7 @@ class CopilotService(
         return CopilotAskResponse(
             question = question,
             answer = answer,
+            intent = detectIntent(question.lowercase().replace(" ", "")).name,
             reasoning = extractBulletSection(lines, "REASONING:").ifEmpty {
                 listOf("오늘 브리핑과 우선순위 흐름을 기준으로 답변했습니다.")
             },
@@ -457,6 +458,7 @@ class CopilotService(
         return CopilotAskResponse(
             question = question,
             answer = answer,
+            intent = intent.name,
             reasoning = reasoning,
             suggestedActions = suggestedActions,
             source = "RULE_BASED",
