@@ -598,6 +598,7 @@ class CopilotService(
             id = id,
             question = question,
             answer = answer,
+            intent = detectIntent(question.lowercase().replace(" ", "")).name,
             reasoning = objectMapper.readValue(reasoning, objectMapper.typeFactory.constructCollectionType(List::class.java, String::class.java)),
             suggestedActions = objectMapper.readValue(suggestedActions, objectMapper.typeFactory.constructCollectionType(List::class.java, String::class.java)),
             source = source,

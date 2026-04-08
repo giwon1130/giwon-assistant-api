@@ -71,6 +71,7 @@ class CopilotControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data[0].question").exists())
+            .andExpect(jsonPath("$.data[0].intent").exists())
             .andExpect(jsonPath("$.data[0].answer").exists())
     }
 }
