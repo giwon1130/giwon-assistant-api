@@ -8,6 +8,8 @@ data class DailyRoutineResponse(
     val streakDays: Int,
     val weeklyCompletionRate: Int,
     val weeklyCompletedDays: Int,
+    val insight: String,
+    val suggestedActions: List<String>,
     val recentDays: List<DailyRoutineDaySummaryResponse>,
     val categoryStats: List<DailyRoutineCategoryStatResponse>,
     val items: List<DailyRoutineItemResponse>,

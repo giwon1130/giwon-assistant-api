@@ -102,6 +102,22 @@ class DailyRoutineService(
                     totalCount = specs.size,
                 )
             }
+        val incompleteItems = items.filter { !it.completed }
+        val insight = when {
+            completedCount == items.size ->
+                "오늘 루틴을 전부 체크했어. 지금은 이 흐름을 내일까지 유지하는 게 핵심이야."
+            incompleteItems.any { it.category == "HEALTH" } ->
+                "건강 루틴이 아직 남아 있어. 비타민, 물, 약 복용 같은 기본 항목부터 먼저 닫는 게 좋아."
+            incompleteItems.any { it.category == "RECOVERY" } ->
+                "회복 루틴이 비어 있어. 밤 루틴과 수면 준비를 오늘 마감 루틴으로 고정하는 편이 좋다."
+            else ->
+                "에너지 루틴이 남아 있어. 짧은 산책이나 가벼운 운동으로 컨디션을 정리하면 좋아."
+        }
+        val suggestedActions = buildList {
+            incompleteItems.firstOrNull()?.let { add("${it.label} 체크") }
+            if (incompleteItems.any { it.category == "HEALTH" }) add("건강 루틴 1개를 오늘 액션으로 전환")
+            if (weeklyCompletionRate < 40) add("Daily Check를 오전/저녁 고정 체크로 묶기")
+        }.distinct()
 
         return DailyRoutineResponse(
             date = targetDate.toString(),
@@ -111,6 +127,8 @@ class DailyRoutineService(
             streakDays = calculateStreak(targetDate),
             weeklyCompletionRate = weeklyCompletionRate,
             weeklyCompletedDays = weeklyCompletedDays,
+            insight = insight,
+            suggestedActions = suggestedActions,
             recentDays = recentDays,
             categoryStats = categoryStats,
             items = items,
