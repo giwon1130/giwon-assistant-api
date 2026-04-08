@@ -6,6 +6,8 @@ data class TodayCopilotResponse(
     val overview: String,
     val topPriority: String,
     val suggestedNextAction: String,
+    val routineSummary: String,
+    val routineSuggestedAction: String,
     val risks: List<String>,
     val recommendedIdeas: List<CopilotIdeaAction>,
     val todayFlow: List<CopilotTimeSuggestion>,

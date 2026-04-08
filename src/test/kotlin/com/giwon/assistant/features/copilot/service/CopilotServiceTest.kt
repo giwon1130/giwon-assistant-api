@@ -10,6 +10,7 @@ import com.giwon.assistant.features.idea.service.AssistantGeminiProperties
 import com.giwon.assistant.features.idea.service.AssistantOpenAiProperties
 import com.giwon.assistant.features.idea.service.IdeaService
 import com.giwon.assistant.features.planner.service.PlannerService
+import com.giwon.assistant.features.routine.service.DailyRoutineService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
@@ -20,6 +21,7 @@ class CopilotServiceTest {
         briefingService = mock(BriefingService::class.java),
         plannerService = mock(PlannerService::class.java),
         ideaService = mock(IdeaService::class.java),
+        dailyRoutineService = mock(DailyRoutineService::class.java),
         copilotHistoryRepository = mock(CopilotHistoryRepository::class.java),
         weatherProvider = mock(WeatherProvider::class.java),
         calendarProvider = mock(CalendarProvider::class.java),

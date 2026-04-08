@@ -7,6 +7,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -33,11 +34,19 @@ class CopilotControllerTest {
                 )
         ).andExpect(status().isOk)
 
+        mockMvc.perform(
+            patch("/api/v1/routines/daily/VITAMIN")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"completed":true}""")
+        ).andExpect(status().isOk)
+
         mockMvc.perform(get("/api/v1/copilot/today"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.headline").exists())
             .andExpect(jsonPath("$.data.topPriority").exists())
+            .andExpect(jsonPath("$.data.routineSummary").exists())
+            .andExpect(jsonPath("$.data.routineSuggestedAction").exists())
             .andExpect(jsonPath("$.data.recommendedIdeas[0].title").exists())
             .andExpect(jsonPath("$.data.todayFlow.length()").value(3))
     }

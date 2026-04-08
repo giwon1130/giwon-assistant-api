@@ -19,6 +19,7 @@ import com.giwon.assistant.features.idea.service.IdeaService
 import com.giwon.assistant.features.idea.service.AssistantOpenAiProperties
 import com.giwon.assistant.features.planner.dto.TodayPlanResponse
 import com.giwon.assistant.features.planner.service.PlannerService
+import com.giwon.assistant.features.routine.service.DailyRoutineService
 import org.springframework.stereotype.Service
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientResponseException
@@ -31,6 +32,7 @@ class CopilotService(
     private val briefingService: BriefingService,
     private val plannerService: PlannerService,
     private val ideaService: IdeaService,
+    private val dailyRoutineService: DailyRoutineService,
     private val copilotHistoryRepository: CopilotHistoryRepository,
     private val weatherProvider: WeatherProvider,
     private val calendarProvider: CalendarProvider,
@@ -48,6 +50,7 @@ class CopilotService(
     fun getTodayCopilot(): TodayCopilotResponse {
         val briefing = briefingService.getTodayBriefing(weatherProvider, calendarProvider, newsProvider)
         val todayPlan = plannerService.getTodayPlan()
+        val dailyRoutine = dailyRoutineService.getDailyRoutine(null)
         val activeIdeas = ideaService.getAll()
             .filter { it.status != "DONE" }
             .take(3)
@@ -59,16 +62,20 @@ class CopilotService(
 
         return TodayCopilotResponse(
             generatedAt = OffsetDateTime.now().toString(),
-            headline = "오늘은 ${primaryTask}부터 끝내는 흐름이 가장 효율적이다.",
+            headline = buildHeadline(primaryTask, dailyRoutine),
             overview = buildOverview(
                 weatherCondition = briefing.weather.condition,
                 temperature = briefing.weather.temperatureCelsius,
                 firstEventTitle = firstCalendarItem?.title,
                 firstHeadlineTitle = firstHeadline?.title,
+                dailyRoutineSummary = dailyRoutine.insight,
             ),
-            topPriority = topPriority,
-            suggestedNextAction = buildSuggestedNextAction(primaryTask, activeIdeas.firstOrNull()?.title),
-            risks = buildRisks(briefing, todayPlan),
+            topPriority = buildTopPriority(topPriority, dailyRoutine),
+            suggestedNextAction = buildSuggestedNextAction(primaryTask, activeIdeas.firstOrNull()?.title, dailyRoutine),
+            routineSummary = dailyRoutine.insight,
+            routineSuggestedAction = dailyRoutine.suggestedActions.firstOrNull()
+                ?: "오늘 남은 루틴 1개를 먼저 닫고 메인 작업으로 넘어가기",
+            risks = buildRisks(briefing, todayPlan, dailyRoutine),
             recommendedIdeas = activeIdeas.map { idea ->
                 CopilotIdeaAction(
                     id = idea.id,
@@ -115,27 +122,55 @@ class CopilotService(
             "${firstEventTitle} 전에 ${primaryTask}의 핵심 결정이나 구현 1건을 먼저 끝내는 게 좋다."
         }
 
+    private fun buildHeadline(
+        primaryTask: String,
+        dailyRoutine: com.giwon.assistant.features.routine.dto.DailyRoutineResponse,
+    ): String =
+        if (dailyRoutine.completedCount == 0) {
+            "오늘은 ${primaryTask} 전에 기본 루틴 1개부터 닫는 흐름이 더 안정적이다."
+        } else {
+            "오늘은 ${primaryTask}부터 끝내는 흐름이 가장 효율적이다."
+        }
+
     private fun buildOverview(
         weatherCondition: String,
         temperature: Int,
         firstEventTitle: String?,
         firstHeadlineTitle: String?,
+        dailyRoutineSummary: String,
     ): String {
         val eventPart = firstEventTitle?.let { "첫 일정은 ${it}이고" } ?: "확정된 일정은 많지 않고"
         val headlinePart = firstHeadlineTitle?.let { "가장 먼저 볼 뉴스는 '${it}'이다." } ?: "뉴스 이슈는 크지 않다."
-        return "현재 날씨는 ${weatherCondition}, ${temperature}도 수준이다. ${eventPart} 오늘은 오전 집중도를 지키는 게 중요하다. ${headlinePart}"
+        return "현재 날씨는 ${weatherCondition}, ${temperature}도 수준이다. ${eventPart} 오늘은 오전 집중도를 지키는 게 중요하다. ${headlinePart} 루틴 기준으로는 ${dailyRoutineSummary}"
     }
 
-    private fun buildSuggestedNextAction(primaryTask: String, firstIdeaTitle: String?): String =
-        if (firstIdeaTitle == null) {
+    private fun buildSuggestedNextAction(
+        primaryTask: String,
+        firstIdeaTitle: String?,
+        dailyRoutine: com.giwon.assistant.features.routine.dto.DailyRoutineResponse,
+    ): String =
+        if (dailyRoutine.completedCount < 2 && dailyRoutine.suggestedActions.isNotEmpty()) {
+            "${dailyRoutine.suggestedActions.first()}부터 처리한 뒤 ${primaryTask} 블록으로 넘어가는 게 좋다."
+        } else if (firstIdeaTitle == null) {
             "${primaryTask} 관련 작업을 90분 블록으로 먼저 확보하고, 끝난 뒤 브리핑을 한 번 더 갱신한다."
         } else {
             "${primaryTask}를 먼저 처리한 뒤 '${firstIdeaTitle}'를 다음 액션 후보로 검토하는 게 좋다."
         }
 
+    private fun buildTopPriority(
+        existingTopPriority: String,
+        dailyRoutine: com.giwon.assistant.features.routine.dto.DailyRoutineResponse,
+    ): String =
+        if (dailyRoutine.completedCount == 0) {
+            "메인 작업 전에 비타민, 물, 약 복용 같은 기본 루틴 1개를 먼저 닫고 ${existingTopPriority}"
+        } else {
+            existingTopPriority
+        }
+
     private fun buildRisks(
         briefing: com.giwon.assistant.features.briefing.dto.TodayBriefingResponse,
         todayPlan: com.giwon.assistant.features.planner.dto.TodayPlanResponse,
+        dailyRoutine: com.giwon.assistant.features.routine.dto.DailyRoutineResponse,
     ): List<String> {
         val calendarRisk = if (briefing.calendar.size >= 2) {
             "일정이 ${briefing.calendar.size}건이라 중간에 집중 흐름이 끊길 수 있다."
@@ -143,9 +178,17 @@ class CopilotService(
             "자유 시간이 많은 대신 우선순위가 흐려질 수 있다."
         }
         val reminderRisk = todayPlan.reminders.firstOrNull() ?: "중요 작업 종료 후 정리 시간을 따로 잡는 게 좋다."
+        val routineRisk = if (dailyRoutine.completedCount == 0) {
+            "기본 루틴 체크가 아직 없어 컨디션 관리가 뒤로 밀릴 수 있다."
+        } else if (dailyRoutine.weeklyCompletionRate < 40) {
+            "최근 7일 루틴 완료율이 낮아 생활 리듬이 흔들릴 수 있다."
+        } else {
+            "루틴은 유지되고 있지만 저녁 회복 루틴이 비면 마감 집중도가 떨어질 수 있다."
+        }
         return listOf(
             calendarRisk,
             reminderRisk,
+            routineRisk,
             "새 아이디어를 바로 구현으로 넘기기보다 기존 진행 중 항목부터 닫는 편이 효율적이다."
         )
     }
