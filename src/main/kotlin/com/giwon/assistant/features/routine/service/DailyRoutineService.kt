@@ -1,5 +1,7 @@
 package com.giwon.assistant.features.routine.service
 
+import com.giwon.assistant.features.routine.dto.DailyRoutineCategoryStatResponse
+import com.giwon.assistant.features.routine.dto.DailyRoutineDaySummaryResponse
 import com.giwon.assistant.features.routine.dto.DailyRoutineItemResponse
 import com.giwon.assistant.features.routine.dto.DailyRoutineResponse
 import com.giwon.assistant.features.routine.dto.UpdateDailyRoutineRequest
@@ -75,6 +77,31 @@ class DailyRoutineService(
         }
         val completedCount = items.count { it.completed }
         val completionRate = if (items.isEmpty()) 0 else ((completedCount.toDouble() / items.size) * 100).toInt()
+        val weekStart = targetDate.minusDays(6)
+        val checksByDate = dailyRoutineCheckRepository.findAllByCheckDateBetween(weekStart, targetDate)
+            .groupBy { it.checkDate }
+        val recentDays = (0..6).map { offset ->
+            val date = weekStart.plusDays(offset.toLong())
+            val dayChecks = checksByDate[date].orEmpty()
+            val dayCompletedCount = dayChecks.count { it.completed }
+            DailyRoutineDaySummaryResponse(
+                date = date.toString(),
+                completedCount = dayCompletedCount,
+                totalCount = routineSpecs.size,
+                completionRate = ((dayCompletedCount.toDouble() / routineSpecs.size) * 100).toInt(),
+            )
+        }
+        val weeklyCompletedDays = recentDays.count { it.completedCount >= 3 }
+        val weeklyCompletionRate = if (recentDays.isEmpty()) 0 else (recentDays.sumOf { it.completionRate } / recentDays.size)
+        val categoryStats = routineSpecs.groupBy { it.category }
+            .map { (category, specs) ->
+                val completedInCategory = items.count { it.category == category && it.completed }
+                DailyRoutineCategoryStatResponse(
+                    category = category,
+                    completedCount = completedInCategory,
+                    totalCount = specs.size,
+                )
+            }
 
         return DailyRoutineResponse(
             date = targetDate.toString(),
@@ -82,6 +109,10 @@ class DailyRoutineService(
             completedCount = completedCount,
             totalCount = items.size,
             streakDays = calculateStreak(targetDate),
+            weeklyCompletionRate = weeklyCompletionRate,
+            weeklyCompletedDays = weeklyCompletedDays,
+            recentDays = recentDays,
+            categoryStats = categoryStats,
             items = items,
         )
     }
