@@ -1,31 +1,44 @@
 package com.giwon.assistant.features.review.service
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.giwon.assistant.features.action.repository.CopilotActionRepository
 import com.giwon.assistant.features.copilot.repository.CopilotHistoryRepository
 import com.giwon.assistant.features.idea.repository.IdeaRepository
 import com.giwon.assistant.features.review.dto.WeeklyReviewMetrics
 import com.giwon.assistant.features.review.dto.WeeklyReviewResponse
+import com.giwon.assistant.features.review.dto.WeeklyReviewSnapshotResponse
+import com.giwon.assistant.features.review.entity.WeeklyReviewSnapshotEntity
+import com.giwon.assistant.features.review.repository.WeeklyReviewSnapshotRepository
 import org.springframework.stereotype.Service
+import java.time.DayOfWeek
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.time.temporal.TemporalAdjusters
 
 @Service
 class WeeklyReviewService(
     private val copilotHistoryRepository: CopilotHistoryRepository,
     private val copilotActionRepository: CopilotActionRepository,
     private val ideaRepository: IdeaRepository,
+    private val weeklyReviewSnapshotRepository: WeeklyReviewSnapshotRepository,
+    private val objectMapper: ObjectMapper,
 ) {
     fun getWeeklyReview(): WeeklyReviewResponse {
-        val periodEnd = OffsetDateTime.now()
-        val periodStart = periodEnd.minusDays(7)
+        val now = OffsetDateTime.now(ZoneOffset.UTC)
+        val periodStart = now.toLocalDate()
+            .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+            .atStartOfDay()
+            .atOffset(ZoneOffset.UTC)
+        val periodEnd = periodStart.plusDays(7)
 
         val histories = copilotHistoryRepository.findAll()
-            .filter { !it.generatedAt.isBefore(periodStart) }
+            .filter { !it.generatedAt.isBefore(periodStart) && it.generatedAt.isBefore(periodEnd) }
             .sortedByDescending { it.generatedAt }
         val actions = copilotActionRepository.findAll()
-            .filter { !it.createdAt.isBefore(periodStart) }
+            .filter { !it.createdAt.isBefore(periodStart) && it.createdAt.isBefore(periodEnd) }
             .sortedByDescending { it.createdAt }
         val ideas = ideaRepository.findAll()
-            .filter { !it.createdAt.isBefore(periodStart) }
+            .filter { !it.createdAt.isBefore(periodStart) && it.createdAt.isBefore(periodEnd) }
             .sortedByDescending { it.createdAt }
 
         val completedActions = actions.count { it.status == "DONE" }
@@ -63,7 +76,7 @@ class WeeklyReviewService(
             add("반복 질문 1건을 없앨 수 있도록 템플릿 또는 체크리스트로 고정")
         }
 
-        return WeeklyReviewResponse(
+        val review = WeeklyReviewResponse(
             periodStart = periodStart.toString(),
             periodEnd = periodEnd.toString(),
             summary = buildSummary(metrics, completedActions, topQuestion),
@@ -72,7 +85,13 @@ class WeeklyReviewService(
             risks = risks,
             nextFocus = nextFocus,
         )
+        persistSnapshot(review)
+        return review
     }
+
+    fun getWeeklyReviewHistory(): List<WeeklyReviewSnapshotResponse> =
+        weeklyReviewSnapshotRepository.findTop8ByOrderByGeneratedAtDesc()
+            .map { it.toResponse() }
 
     private fun buildSummary(
         metrics: WeeklyReviewMetrics,
@@ -86,6 +105,39 @@ class WeeklyReviewService(
         }
         val questionPart = topQuestion?.let { "가장 자주 반복된 질문은 '${it}'였다." }
             ?: "질문 로그가 많지 않아 패턴 분석은 다음 주에 더 정확해질 수 있다."
-        return "지난 7일 동안 코파일럿 질문 ${metrics.questionsAsked}건, 아이디어 ${metrics.ideasCaptured}건이 쌓였다. $actionPart $questionPart"
+        return "이번 주 코파일럿 질문 ${metrics.questionsAsked}건, 아이디어 ${metrics.ideasCaptured}건이 쌓였다. $actionPart $questionPart"
     }
+
+    private fun persistSnapshot(review: WeeklyReviewResponse) {
+        val periodStart = OffsetDateTime.parse(review.periodStart)
+        val periodEnd = OffsetDateTime.parse(review.periodEnd)
+        val snapshotId = "WEEKLY-${periodStart.toLocalDate()}"
+        val existing = weeklyReviewSnapshotRepository.findById(snapshotId).orElse(null)
+        val entity = existing ?: WeeklyReviewSnapshotEntity(
+            id = snapshotId,
+            periodStart = periodStart,
+            periodEnd = periodEnd,
+        )
+
+        entity.summary = review.summary
+        entity.metrics = objectMapper.writeValueAsString(review.metrics)
+        entity.wins = objectMapper.writeValueAsString(review.wins)
+        entity.risks = objectMapper.writeValueAsString(review.risks)
+        entity.nextFocus = objectMapper.writeValueAsString(review.nextFocus)
+        entity.generatedAt = OffsetDateTime.now()
+        weeklyReviewSnapshotRepository.save(entity)
+    }
+
+    private fun WeeklyReviewSnapshotEntity.toResponse(): WeeklyReviewSnapshotResponse =
+        WeeklyReviewSnapshotResponse(
+            id = id,
+            periodStart = periodStart.toString(),
+            periodEnd = periodEnd.toString(),
+            summary = summary,
+            metrics = objectMapper.readValue(metrics, WeeklyReviewMetrics::class.java),
+            wins = objectMapper.readValue(wins, objectMapper.typeFactory.constructCollectionType(List::class.java, String::class.java)),
+            risks = objectMapper.readValue(risks, objectMapper.typeFactory.constructCollectionType(List::class.java, String::class.java)),
+            nextFocus = objectMapper.readValue(nextFocus, objectMapper.typeFactory.constructCollectionType(List::class.java, String::class.java)),
+            generatedAt = generatedAt.toString(),
+        )
 }

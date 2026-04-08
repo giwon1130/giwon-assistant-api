@@ -27,7 +27,9 @@ class ActionControllerTest {
                     """
                     {
                       "title": "AI 비서 API MVP 확정",
-                      "sourceQuestion": "오늘 뭐부터 하면 좋을까?"
+                      "sourceQuestion": "오늘 뭐부터 하면 좋을까?",
+                      "priority": "HIGH",
+                      "dueDate": "2026-04-10T09:00:00+09:00"
                     }
                     """.trimIndent()
                 )
@@ -35,6 +37,7 @@ class ActionControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.status").value("OPEN"))
+            .andExpect(jsonPath("$.data.priority").value("HIGH"))
             .andReturn()
 
         val actionId = com.jayway.jsonpath.JsonPath.read<String>(
@@ -46,6 +49,15 @@ class ActionControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data[0].id").exists())
+
+        mockMvc.perform(
+            patch("/api/v1/actions/$actionId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"priority":"LOW","dueDate":"2026-04-11T18:00:00+09:00"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.priority").value("LOW"))
+            .andExpect(jsonPath("$.data.dueDate").exists())
 
         mockMvc.perform(
             patch("/api/v1/actions/$actionId/status")

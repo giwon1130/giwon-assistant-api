@@ -18,6 +18,10 @@ class CopilotActionEntity(
     var sourceQuestion: String = "",
     @Column(name = "status", nullable = false, length = 32)
     var status: String = "",
+    @Column(name = "priority", nullable = false, length = 16)
+    var priority: String = "MEDIUM",
+    @Column(name = "due_date")
+    var dueDate: OffsetDateTime? = null,
     @Column(name = "created_at", nullable = false)
     var createdAt: OffsetDateTime = OffsetDateTime.now(),
     @Column(name = "updated_at", nullable = false)

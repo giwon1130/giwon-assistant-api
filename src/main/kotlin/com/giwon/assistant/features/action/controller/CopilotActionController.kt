@@ -3,6 +3,7 @@ package com.giwon.assistant.features.action.controller
 import com.giwon.assistant.common.ApiResponse
 import com.giwon.assistant.features.action.dto.CopilotActionResponse
 import com.giwon.assistant.features.action.dto.CreateCopilotActionRequest
+import com.giwon.assistant.features.action.dto.UpdateCopilotActionRequest
 import com.giwon.assistant.features.action.dto.UpdateCopilotActionStatusRequest
 import com.giwon.assistant.features.action.service.CopilotActionService
 import jakarta.validation.Valid
@@ -34,4 +35,11 @@ class CopilotActionController(
         @Valid @RequestBody request: UpdateCopilotActionStatusRequest,
     ): ApiResponse<CopilotActionResponse> =
         ApiResponse.ok(copilotActionService.updateStatus(actionId, request.status))
+
+    @PatchMapping("/{actionId}")
+    fun update(
+        @PathVariable actionId: String,
+        @RequestBody request: UpdateCopilotActionRequest,
+    ): ApiResponse<CopilotActionResponse> =
+        ApiResponse.ok(copilotActionService.update(actionId, request))
 }

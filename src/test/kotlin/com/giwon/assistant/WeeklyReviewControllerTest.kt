@@ -53,5 +53,16 @@ class WeeklyReviewControllerTest {
             .andExpect(jsonPath("$.data.metrics.questionsAsked").exists())
             .andExpect(jsonPath("$.data.wins[0]").exists())
             .andExpect(jsonPath("$.data.nextFocus[0]").exists())
+
+        mockMvc.perform(get("/api/v1/reviews/weekly"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+
+        mockMvc.perform(get("/api/v1/reviews/weekly/history"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.length()").value(1))
+            .andExpect(jsonPath("$.data[0].summary").exists())
+            .andExpect(jsonPath("$.data[0].generatedAt").exists())
     }
 }

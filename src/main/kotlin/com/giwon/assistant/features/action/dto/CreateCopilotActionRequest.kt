@@ -7,4 +7,6 @@ data class CreateCopilotActionRequest(
     val title: String,
     @field:NotBlank
     val sourceQuestion: String,
+    val priority: String? = null,
+    val dueDate: String? = null,
 )
