@@ -106,6 +106,8 @@ class DailyRoutineService(
         val insight = when {
             completedCount == items.size ->
                 "오늘 루틴을 전부 체크했어. 지금은 이 흐름을 내일까지 유지하는 게 핵심이야."
+            incompleteItems.any { it.category == "NUTRITION" } ->
+                "식사 로그가 비어 있어. 아침, 점심, 저녁 중 비어 있는 끼니부터 먼저 체크해두는 게 좋아."
             incompleteItems.any { it.category == "HEALTH" } ->
                 "건강 루틴이 아직 남아 있어. 비타민, 물, 약 복용 같은 기본 항목부터 먼저 닫는 게 좋아."
             incompleteItems.any { it.category == "RECOVERY" } ->
@@ -115,6 +117,7 @@ class DailyRoutineService(
         }
         val suggestedActions = buildList {
             incompleteItems.firstOrNull()?.let { add("${it.label} 체크") }
+            if (incompleteItems.any { it.category == "NUTRITION" }) add("비어 있는 식사 로그 1개 먼저 기록")
             if (incompleteItems.any { it.category == "HEALTH" }) add("건강 루틴 1개를 오늘 액션으로 전환")
             if (weeklyCompletionRate < 40) add("Daily Check를 오전/저녁 고정 체크로 묶기")
         }.distinct()
@@ -160,6 +163,9 @@ class DailyRoutineService(
 
     companion object {
         private val routineSpecs = listOf(
+            RoutineSpec("BREAKFAST", "아침 식사", "아침 식사를 챙겼는지 기록", "NUTRITION", "아침"),
+            RoutineSpec("LUNCH", "점심 식사", "점심 식사를 놓치지 않았는지 기록", "NUTRITION", "점심"),
+            RoutineSpec("DINNER", "저녁 식사", "저녁 식사 또는 가벼운 저녁을 챙겼는지 기록", "NUTRITION", "저녁"),
             RoutineSpec("VITAMIN", "비타민", "아침에 영양제나 비타민을 챙겨 먹었는지 체크", "HEALTH", "아침"),
             RoutineSpec("WATER", "물 2L", "수분 섭취 목표를 채웠는지 체크", "HEALTH", "하루"),
             RoutineSpec("WORKOUT", "운동", "가벼운 운동이나 스트레칭을 했는지 체크", "ENERGY", "저녁"),

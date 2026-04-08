@@ -22,7 +22,7 @@ class DailyRoutineControllerTest {
         mockMvc.perform(get("/api/v1/routines/daily"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data.totalCount").value(6))
+            .andExpect(jsonPath("$.data.totalCount").value(9))
             .andExpect(jsonPath("$.data.weeklyCompletionRate").exists())
             .andExpect(jsonPath("$.data.insight").exists())
             .andExpect(jsonPath("$.data.suggestedActions").isArray)
