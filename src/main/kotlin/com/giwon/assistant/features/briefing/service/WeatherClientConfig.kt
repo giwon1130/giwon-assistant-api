@@ -11,6 +11,7 @@ import org.springframework.web.client.RestClient
     AssistantCalendarProperties::class,
     AssistantNewsProperties::class,
     AssistantBriefingScheduleProperties::class,
+    AssistantAnthropicProperties::class,
 )
 class WeatherClientConfig {
     @Bean
@@ -22,4 +23,22 @@ class WeatherClientConfig {
     @Bean
     fun newsRestClient(): RestClient =
         RestClient.builder().build()
+
+    @Bean
+    fun googleCalendarRestClient(): RestClient =
+        RestClient.builder()
+            .baseUrl("https://www.googleapis.com")
+            .build()
+
+    @Bean
+    fun googleOAuthRestClient(): RestClient =
+        RestClient.builder()
+            .baseUrl("https://oauth2.googleapis.com")
+            .build()
+
+    @Bean
+    fun claudeRestClient(): RestClient =
+        RestClient.builder()
+            .baseUrl("https://api.anthropic.com")
+            .build()
 }

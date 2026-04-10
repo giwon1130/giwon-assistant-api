@@ -6,6 +6,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class AssistantCalendarProperties(
     val timezone: String,
     val defaultEvents: List<AssistantCalendarEventProperty>,
+    val calendarId: String = "primary",
+    val clientId: String = "",
+    val clientSecret: String = "",
+    val refreshToken: String = "",
 )
 
 data class AssistantCalendarEventProperty(

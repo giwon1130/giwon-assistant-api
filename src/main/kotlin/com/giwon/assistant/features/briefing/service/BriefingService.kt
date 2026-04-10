@@ -11,6 +11,7 @@ import com.giwon.assistant.features.briefing.dto.TodayBriefingResponse
 import com.giwon.assistant.features.briefing.dto.WeatherSummary
 import com.giwon.assistant.features.briefing.entity.BriefingHistoryEntity
 import com.giwon.assistant.features.briefing.repository.BriefingHistoryRepository
+import com.giwon.assistant.common.notion.NotionBriefingExporter
 import org.springframework.stereotype.Service
 import java.time.LocalDate
 import java.time.LocalTime
@@ -23,6 +24,8 @@ class BriefingService(
     private val briefingHistoryRepository: BriefingHistoryRepository,
     private val objectMapper: ObjectMapper,
     private val scheduleProperties: AssistantBriefingScheduleProperties,
+    private val notionBriefingExporter: NotionBriefingExporter,
+    private val briefingSummaryProvider: BriefingSummaryProvider,
 ) {
     companion object {
         private const val MANUAL_SOURCE = "MANUAL"
@@ -86,33 +89,55 @@ class BriefingService(
         newsProvider: NewsProvider,
         source: String,
     ): TodayBriefingResponse {
+        val weather = runCatching { weatherProvider.getCurrentWeather() }.getOrElse { fallbackWeather() }
+        val calendar = runCatching { calendarProvider.getEvents(LocalDate.now()) }
+            .getOrElse {
+                listOf(
+                    CalendarItem(time = "10:00", title = "프로젝트 구조 정리", mock = true),
+                    CalendarItem(time = "15:00", title = "개인 서비스 점검", mock = true),
+                )
+            }
+        val headlines = runCatching { newsProvider.getTopHeadlines() }
+            .getOrElse {
+                listOf(
+                    HeadlineItem(source = "Tech", title = "AI 제품화 경쟁이 심화되는 중", mock = true),
+                    HeadlineItem(source = "Local", title = "날씨 변동 폭이 커 외출 전 확인 필요", mock = true),
+                )
+            }
+        val tasks = listOf(
+            TaskItem(priority = "HIGH", title = "AI 비서 MVP API 구조 확정"),
+            TaskItem(priority = "MEDIUM", title = "giwon-home에 live 링크 연결"),
+            TaskItem(priority = "LOW", title = "아이디어 노트 정리"),
+        )
+
+        val summaryResult = runCatching {
+            briefingSummaryProvider.summarize(
+                BriefingSummaryRequest(
+                    weather = weather,
+                    calendar = calendar,
+                    headlines = headlines,
+                    tasks = tasks,
+                )
+            )
+        }.getOrElse {
+            BriefingSummaryResult(
+                summary = "오늘 하루 브리핑 요약을 생성하지 못했습니다. [목데이터]",
+                focusSuggestion = "중요한 작업에 먼저 집중하세요. [목데이터]",
+            )
+        }
+
         val response = TodayBriefingResponse(
             generatedAt = OffsetDateTime.now().toString(),
-            summary = "오늘은 오전 집중 작업 1건과 오후 미팅 1건이 있어. 먼저 중요한 작업을 끝내는 흐름이 좋다.",
-            weather = runCatching { weatherProvider.getCurrentWeather() }.getOrElse { fallbackWeather() },
-            calendar = runCatching { calendarProvider.getEvents(LocalDate.now()) }
-                .getOrElse {
-                    listOf(
-                        CalendarItem(time = "10:00", title = "프로젝트 구조 정리"),
-                        CalendarItem(time = "15:00", title = "개인 서비스 점검"),
-                    )
-                },
-            headlines = runCatching { newsProvider.getTopHeadlines() }
-                .getOrElse {
-                    listOf(
-                        HeadlineItem(source = "Tech", title = "AI 제품화 경쟁이 심화되는 중"),
-                        HeadlineItem(source = "Local", title = "날씨 변동 폭이 커 외출 전 확인 필요"),
-                    )
-                },
-            tasks = listOf(
-                TaskItem(priority = "HIGH", title = "AI 비서 MVP API 구조 확정"),
-                TaskItem(priority = "MEDIUM", title = "giwon-home에 live 링크 연결"),
-                TaskItem(priority = "LOW", title = "아이디어 노트 정리"),
-            ),
-            focusSuggestion = "오전에는 설계와 구현을 한 번에 끝내고, 오후에는 연결 작업과 정리에 집중하는 게 좋다.",
+            summary = summaryResult.summary,
+            weather = weather,
+            calendar = calendar,
+            headlines = headlines,
+            tasks = tasks,
+            focusSuggestion = summaryResult.focusSuggestion,
         )
 
         briefingHistoryRepository.save(response.toEntity(source))
+        notionBriefingExporter.export(response, source)
         return response
     }
 

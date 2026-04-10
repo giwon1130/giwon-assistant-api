@@ -8,6 +8,7 @@ import com.giwon.assistant.features.idea.dto.UpdateIdeaRequest
 import com.giwon.assistant.features.idea.entity.IdeaEntity
 import com.giwon.assistant.features.idea.model.Idea
 import com.giwon.assistant.features.idea.repository.IdeaRepository
+import com.giwon.assistant.common.notion.NotionIdeaExporter
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -16,6 +17,7 @@ import java.util.UUID
 class IdeaService(
     private val ideaSummaryProvider: IdeaSummaryProvider,
     private val ideaRepository: IdeaRepository,
+    private val notionIdeaExporter: NotionIdeaExporter,
 ) {
     fun summarize(request: IdeaSummaryRequest): IdeaSummaryResponse =
         runCatching { ideaSummaryProvider.summarize(request) }
@@ -37,7 +39,9 @@ class IdeaService(
             updatedAt = now,
         )
 
-        return ideaRepository.save(idea.toEntity()).toModel().toResponse()
+        val saved = ideaRepository.save(idea.toEntity()).toModel().toResponse()
+        notionIdeaExporter.export(saved)
+        return saved
     }
 
     fun getAll(): List<IdeaDetailResponse> =

@@ -1,153 +1,133 @@
 # giwon-assistant-api
 
 아침 브리핑, 아이디어 정리, 일정/할 일 요약을 제공하는 개인 AI 비서 API다.
-지금은 브리핑 이력과 아이디어를 DB에 저장하는 형태까지 들어간 초기 제품 단계다.
-
-## MVP 방향
-- 아침마다 하루 계획, 날씨, 뉴스 요약을 한 번에 정리
-- 떠오른 아이디어나 생각을 요약 가능한 구조로 변환
-- 일정과 할 일을 오늘 기준 계획으로 묶어서 보여주기
+브리핑 이력과 아이디어를 DB에 저장하고, Notion과 양방향 연동하는 V2 단계다.
 
 ## 현재 구현 범위
-- `GET /api/v1/briefings/today`
-- `GET /api/v1/briefings/history`
-- `GET /api/v1/briefings/schedule`
-- `POST /api/v1/ideas`
-- `GET /api/v1/ideas`
-- `GET /api/v1/ideas/{id}`
-- `PATCH /api/v1/ideas/{id}`
-- `POST /api/v1/ideas/summaries`
-- `GET /api/v1/plans/today`
-- `GET /api/v1/copilot/today`
-- `GET /api/v1/copilot/history`
-- `POST /api/v1/copilot/ask`
+
+### 브리핑
+- `GET /api/v1/briefings/today` — 날씨/일정/뉴스/할일 기반 하루 브리핑 생성
+- `GET /api/v1/briefings/history` — 최근 브리핑 이력 조회
+- `GET /api/v1/briefings/schedule` — 자동 브리핑 스케줄 상태 확인
+
+### 아이디어
+- `POST /api/v1/ideas` — 아이디어 생성 (AI 요약 포함)
+- `GET /api/v1/ideas` — 아이디어 목록 조회
+- `GET /api/v1/ideas/{id}` — 아이디어 상세 조회
+- `PATCH /api/v1/ideas/{id}` — 아이디어 수정
+- `POST /api/v1/ideas/summaries` — 아이디어 요약만 생성
+
+### 코파일럿
+- `GET /api/v1/copilot/today` — 오늘 코파일럿 요약
+- `GET /api/v1/copilot/history` — 코파일럿 대화 이력
+- `POST /api/v1/copilot/ask` — 코파일럿 질문
+
+### 기타
+- `GET /api/v1/plans/today` — 오늘 계획 조회
 - `GET /actuator/health`
 
-현재 날씨는 Open-Meteo를 통해 실제 값을 받아오고,
-뉴스는 Google News RSS를 통해 상위 헤드라인을 가져오며,
-캘린더는 provider 구조를 먼저 만들고 설정 기반 이벤트를 기본값으로 사용한다.
-코파일럿 질문은 Gemini API를 우선 사용하고, 필요하면 OpenAI를 차선으로 사용한다.
-외부 LLM이 모두 실패하면 RULE_BASED 응답으로 fallback 하며 이유를 함께 내려준다.
-아이디어 요약은 OpenAI Responses API를 붙일 수 있게 만들었고,
-API 키가 없거나 실패하면 mock 응답으로 fallback 한다.
-아이디어와 브리핑 이력은 JPA + Flyway 기반으로 저장된다.
-자동 브리핑은 기본적으로 매일 오전 8시(Asia/Seoul) 스케줄로 동작하며, 같은 날 자동 브리핑은 중복 저장하지 않는다.
+## 외부 연동 현황
+
+| 연동 | 방식 | 활성화 조건 |
+|------|------|------------|
+| 날씨 | Open-Meteo API | 기본 활성화 |
+| 뉴스 | Google News RSS | `news-enabled=true` |
+| 캘린더 | Google Calendar OAuth2 | `calendar-enabled=true` + credentials |
+| 브리핑 요약 | Claude API (Anthropic) | `claude-enabled=true` + `ANTHROPIC_API_KEY` |
+| 아이디어 요약 | OpenAI Responses API | `openai-enabled=true` + `OPENAI_API_KEY` |
+| 코파일럿 | Gemini 우선 / OpenAI fallback | `gemini-enabled=true` |
+| Notion | REST API | `ASSISTANT_NOTION_ENABLED=true` + token + DB ID |
+
+외부 연동이 실패하거나 비활성화된 경우 mock 데이터로 fallback하며, 응답의 `mock: true` 필드로 구분할 수 있다.
 
 ## 기술 스택
-- Kotlin
-- Spring Boot 3.3
-- Spring Web
-- Spring Validation
-- Spring Actuator
-- Spring Data JPA
-- Flyway
-- H2 / PostgreSQL
+- Kotlin / Spring Boot 3.3
+- Spring Web (RestClient)
+- Spring Data JPA / Flyway
+- H2 (로컬) / PostgreSQL (Docker)
 - Docker
 
 ## 로컬 실행
+
 ```bash
 ./gradlew bootRun
 ```
 
-- 기본 프로필은 파일 기반 H2를 사용한다.
-- 그래서 DB를 따로 띄우지 않아도 아이디어/브리핑 이력이 로컬 파일에 저장된다.
+기본 프로필은 파일 기반 H2를 사용한다. DB를 따로 띄우지 않아도 데이터가 로컬 파일에 저장된다.
 
-Gemini 답변을 실제로 쓰려면:
-
+**Claude 브리핑 요약 활성화:**
 ```bash
-export GEMINI_API_KEY=your_key
-export ASSISTANT_INTEGRATIONS_GEMINI_ENABLED=true
-export ASSISTANT_GEMINI_MODEL=gemini-2.0-flash
+ANTHROPIC_API_KEY=sk-ant-... \
+ASSISTANT_INTEGRATIONS_CLAUDE_ENABLED=true \
 ./gradlew bootRun
 ```
 
-OpenAI를 차선 fallback으로 같이 쓰려면:
-
+**Google Calendar 연동 활성화:**
 ```bash
-export OPENAI_API_KEY=your_key
-export ASSISTANT_INTEGRATIONS_OPENAI_ENABLED=true
-export ASSISTANT_OPENAI_MODEL=gpt-4.1
+ASSISTANT_INTEGRATIONS_CALENDAR_ENABLED=true \
+ASSISTANT_GOOGLE_CLIENT_ID=... \
+ASSISTANT_GOOGLE_CLIENT_SECRET=... \
+ASSISTANT_GOOGLE_REFRESH_TOKEN=... \
+./gradlew bootRun
+```
+
+**Notion 연동 활성화:**
+```bash
+ASSISTANT_NOTION_ENABLED=true \
+ASSISTANT_NOTION_TOKEN=ntn_... \
+./gradlew bootRun
+```
+
+**Gemini 코파일럿 활성화:**
+```bash
+GEMINI_API_KEY=... \
+ASSISTANT_INTEGRATIONS_GEMINI_ENABLED=true \
 ./gradlew bootRun
 ```
 
 ## Docker 실행
+
 ```bash
 docker compose up -d --build
 ```
 
-- Docker 실행 시에는 PostgreSQL 프로필로 올라간다.
-- 기본 포트:
-  - API: `8080`
-  - PostgreSQL: `5436`
-
-Gemini를 Docker에서 켜려면 `.env` 또는 셸 환경변수에 아래 값을 넣으면 된다.
-
-```bash
-GEMINI_API_KEY=your_key
-ASSISTANT_INTEGRATIONS_GEMINI_ENABLED=true
-ASSISTANT_GEMINI_MODEL=gemini-2.0-flash
-```
-
-OpenAI fallback을 Docker에서 같이 켜려면:
-
-```bash
-OPENAI_API_KEY=your_key
-ASSISTANT_INTEGRATIONS_OPENAI_ENABLED=true
-ASSISTANT_OPENAI_MODEL=gpt-4.1
-```
-
-## CORS
-- `http://localhost:4173`
-- `http://127.0.0.1:4173`
-
-`giwon-home` 프론트에서 직접 호출할 수 있도록 기본 CORS를 열어뒀다.
+- PostgreSQL 프로필로 올라간다.
+- API: `8080`, PostgreSQL: `5436`
+- 환경변수는 `.env` 파일 또는 셸 환경변수로 전달한다.
 
 ## API 예시
+
 ```bash
+# 오늘 브리핑
 curl http://localhost:8080/api/v1/briefings/today
-```
 
-```bash
-curl http://localhost:8080/api/v1/briefings/history
-```
+# 아이디어 생성
+curl -X POST http://localhost:8080/api/v1/ideas \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"AI 비서 음성 입력","rawText":"아침 브리핑을 음성으로 받으면 더 편할 것 같다.","tags":["AI","UX"]}'
 
-```bash
-curl http://localhost:8080/api/v1/copilot/today
-```
-
-```bash
-curl http://localhost:8080/api/v1/copilot/history
-```
-
-```bash
+# 코파일럿 질문
 curl -X POST http://localhost:8080/api/v1/copilot/ask \
   -H 'Content-Type: application/json' \
   -d '{"question":"오늘 뭐부터 하면 좋을까?"}'
 ```
 
-```bash
-curl -X POST http://localhost:8080/api/v1/ideas/summaries \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"아침 브리핑 제품화","rawText":"아침마다 날씨와 일정, 뉴스 요약을 자동으로 정리해주고 싶다."}'
-```
+## CORS
+- `http://localhost:4173` / `http://127.0.0.1:4173`
 
-```bash
-curl -X POST http://localhost:8080/api/v1/ideas \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"AI 비서 자동화","rawText":"아침마다 날씨와 일정, 뉴스, 할 일을 정리해주는 기능을 만들고 싶다.","tags":["assistant","automation"]}'
-```
+`giwon-home` 프론트에서 직접 호출할 수 있도록 기본 CORS를 열어뒀다.
 
 ## 다음 단계
-- Google Calendar 실제 연동
-- Notion / News 연동
-- 사용자별 브리핑 템플릿 분리
-- 자동 브리핑 결과 전송 채널 추가
-- 브리핑/계획/아이디어를 기반으로 한 대화형 코파일럿 고도화
+- tasks 하드코딩 제거 — 실제 action DB 연동
+- Conversation Copilot 고도화 — 대화 컨텍스트 유지
+- 주간 리뷰 자동화 — 브리핑 로그 기반 리포트 생성
+- 배포 환경 정리
 
 ## 참고
-- 날씨 데이터는 Open-Meteo Forecast API를 기준으로 연동했다.
-- 캘린더는 Google Calendar provider를 붙일 수 있도록 구조를 먼저 분리했다.
-- Gemini 연동은 `generateContent` API 기준으로 붙였다.
-- `ASSISTANT_INTEGRATIONS_GEMINI_ENABLED=true`일 때 코파일럿 질문에서 Gemini를 우선 사용한다.
-- OpenAI 연동은 공식 Responses API 기준으로 붙였고, Gemini 실패 시 차선 fallback으로 사용 가능하다.
-- 뉴스 연동은 Google News RSS 기반으로 붙였고, 비활성화 시 mock headline 으로 fallback 한다.
+- 날씨: Open-Meteo Forecast API
+- 뉴스: Google News RSS
+- 캘린더: Google Calendar API v3 (OAuth2 refresh token)
+- 브리핑 요약: Anthropic Messages API (`claude-sonnet-4-5`)
+- 아이디어 요약: OpenAI Responses API
+- 코파일럿: Gemini `generateContent` API
+- Notion: Notion REST API v1

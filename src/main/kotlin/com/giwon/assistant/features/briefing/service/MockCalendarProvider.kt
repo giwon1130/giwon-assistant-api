@@ -20,6 +20,7 @@ class MockCalendarProvider(
             CalendarItem(
                 time = event.time,
                 title = event.title,
+                mock = true,
             )
         }
 }

@@ -19,11 +19,13 @@ data class WeatherSummary(
 data class CalendarItem(
     val time: String,
     val title: String,
+    val mock: Boolean = false,
 )
 
 data class HeadlineItem(
     val source: String,
     val title: String,
+    val mock: Boolean = false,
 )
 
 data class TaskItem(

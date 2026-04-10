@@ -23,6 +23,7 @@ assistant:
   integrations:
     gemini-enabled: ${ASSISTANT_INTEGRATIONS_GEMINI_ENABLED:false}
     openai-enabled: ${ASSISTANT_INTEGRATIONS_OPENAI_ENABLED:false}
+    claude-enabled: ${ASSISTANT_INTEGRATIONS_CLAUDE_ENABLED:false}
     weather-enabled: true
     calendar-enabled: false
     news-enabled: true
@@ -39,6 +40,10 @@ assistant:
     limit: 3
   calendar:
     timezone: Asia/Seoul
+    calendar-id: ${ASSISTANT_CALENDAR_ID:primary}
+    client-id: ${ASSISTANT_GOOGLE_CLIENT_ID:}
+    client-secret: ${ASSISTANT_GOOGLE_CLIENT_SECRET:}
+    refresh-token: ${ASSISTANT_GOOGLE_REFRESH_TOKEN:}
     default-events:
       - time: "10:00"
         title: "프로젝트 구조 정리"
@@ -48,3 +53,10 @@ assistant:
     model: ${ASSISTANT_OPENAI_MODEL:gpt-4.1}
   gemini:
     model: ${ASSISTANT_GEMINI_MODEL:gemini-2.0-flash}
+  anthropic:
+    model: ${ASSISTANT_ANTHROPIC_MODEL:claude-sonnet-4-5}
+  notion:
+    enabled: ${ASSISTANT_NOTION_ENABLED:false}
+    token: ${ASSISTANT_NOTION_TOKEN:}
+    briefing-database-id: ${ASSISTANT_NOTION_BRIEFING_DB_ID:33e13ab5-11c3-814f-8705-d6425a7711cf}
+    idea-database-id: ${ASSISTANT_NOTION_IDEA_DB_ID:33e13ab5-11c3-8159-8900-cd11190c6076}
