@@ -1,0 +1,1 @@
+ALTER TABLE idea ADD COLUMN IF NOT EXISTS notion_page_id VARCHAR(64);

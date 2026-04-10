@@ -35,4 +35,6 @@ class IdeaEntity(
     var createdAt: OffsetDateTime = OffsetDateTime.now(),
     @Column(name = "updated_at", nullable = false)
     var updatedAt: OffsetDateTime = OffsetDateTime.now(),
+    @Column(name = "notion_page_id", length = 64)
+    var notionPageId: String? = null,
 )

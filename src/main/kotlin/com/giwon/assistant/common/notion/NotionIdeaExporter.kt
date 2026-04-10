@@ -1,23 +1,25 @@
 package com.giwon.assistant.common.notion
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.giwon.assistant.features.idea.dto.IdeaDetailResponse
+import com.giwon.assistant.features.idea.repository.IdeaRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
+import java.time.OffsetDateTime
 
 @Component
 class NotionIdeaExporter(
     private val notionRestClient: RestClient,
     private val properties: AssistantNotionProperties,
+    private val ideaRepository: IdeaRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     fun export(idea: IdeaDetailResponse) {
         if (!properties.enabled || properties.ideaDatabaseId.isBlank()) return
 
-        val date = runCatching {
-            idea.createdAt.substring(0, 10)
-        }.getOrElse { idea.createdAt }
+        val date = runCatching { idea.createdAt.substring(0, 10) }.getOrElse { idea.createdAt }
 
         val body = mapOf(
             "parent" to mapOf("database_id" to properties.ideaDatabaseId),
@@ -31,14 +33,25 @@ class NotionIdeaExporter(
         )
 
         runCatching {
-            notionRestClient.post()
+            val response = notionRestClient.post()
                 .uri("/pages")
                 .body(body)
                 .retrieve()
-                .toBodilessEntity()
-            log.info("Idea exported to Notion: ${idea.title}")
+                .body(NotionPageCreatedResponse::class.java)
+
+            val notionPageId = response?.id
+            if (notionPageId != null) {
+                ideaRepository.findById(idea.id).ifPresent { entity ->
+                    entity.notionPageId = notionPageId
+                    ideaRepository.save(entity)
+                }
+                log.info("Idea exported to Notion: ${idea.title} (pageId=$notionPageId)")
+            }
         }.onFailure {
             log.warn("Failed to export idea to Notion: ${it.message}")
         }
     }
 }
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+private data class NotionPageCreatedResponse(val id: String? = null)
