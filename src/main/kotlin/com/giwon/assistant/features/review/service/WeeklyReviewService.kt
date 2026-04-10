@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.giwon.assistant.features.action.repository.CopilotActionRepository
+import com.giwon.assistant.features.briefing.repository.BriefingHistoryRepository
 import com.giwon.assistant.features.briefing.service.AssistantAnthropicProperties
 import com.giwon.assistant.features.copilot.repository.CopilotHistoryRepository
 import com.giwon.assistant.features.idea.repository.IdeaRepository
@@ -28,6 +29,7 @@ class WeeklyReviewService(
     private val copilotHistoryRepository: CopilotHistoryRepository,
     private val copilotActionRepository: CopilotActionRepository,
     private val ideaRepository: IdeaRepository,
+    private val briefingHistoryRepository: BriefingHistoryRepository,
     private val dailyRoutineService: DailyRoutineService,
     private val weeklyReviewSnapshotRepository: WeeklyReviewSnapshotRepository,
     private val objectMapper: ObjectMapper,
@@ -55,6 +57,9 @@ class WeeklyReviewService(
             .filter { !it.createdAt.isBefore(periodStart) && it.createdAt.isBefore(periodEnd) }
             .sortedByDescending { it.createdAt }
 
+        val briefings = briefingHistoryRepository.findAll()
+            .filter { !it.generatedAt.isBefore(periodStart) && it.generatedAt.isBefore(periodEnd) }
+
         val completedActions = actions.count { it.status == "DONE" }
         val openActions = actions.count { it.status == "OPEN" }
         val topQuestion = histories.groupingBy { it.question }.eachCount().maxByOrNull { it.value }?.key
@@ -70,6 +75,7 @@ class WeeklyReviewService(
             ideasCaptured = ideas.size,
             routineChecksCompleted = routineChecksCompleted,
             routineCompletionDays = routineCompletionDays,
+            briefingsGenerated = briefings.size,
         )
 
         val wins = buildList {
@@ -77,6 +83,7 @@ class WeeklyReviewService(
             if (ideas.isNotEmpty()) add("아이디어 ${ideas.size}건을 기록해 다음 작업 후보를 쌓았다.")
             if (histories.isNotEmpty()) add("코파일럿 질문 ${histories.size}건으로 우선순위 판단 데이터를 남겼다.")
             if (routineChecksCompleted > 0) add("루틴 체크 ${routineChecksCompleted}건으로 생활 리듬을 기록했다.")
+            if (briefings.isNotEmpty()) add("브리핑 ${briefings.size}회로 매일 하루 흐름을 정리했다.")
         }.ifEmpty {
             listOf("이번 주에는 아직 회고 데이터가 많지 않아 다음 주부터 질문/액션 로그를 더 쌓는 게 좋다.")
         }
@@ -165,6 +172,7 @@ class WeeklyReviewService(
             - 캡처된 아이디어: ${review.metrics.ideasCaptured}건
             - 루틴 체크 완료: ${review.metrics.routineChecksCompleted}건
             - 루틴 완료일: ${review.metrics.routineCompletionDays}일
+            - 생성된 브리핑: ${review.metrics.briefingsGenerated}회
             기존 요약: ${review.summary}
             """.trimIndent()
 
