@@ -6,17 +6,20 @@ import com.giwon.assistant.features.copilot.dto.CopilotAskResponse
 import com.giwon.assistant.features.copilot.dto.CopilotHistoryResponse
 import com.giwon.assistant.features.copilot.dto.TodayCopilotResponse
 import com.giwon.assistant.features.copilot.service.CopilotService
+import com.giwon.assistant.features.copilot.service.CopilotStreamService
 import jakarta.validation.Valid
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 
 @RestController
 @RequestMapping("/api/v1/copilot")
 class CopilotController(
     private val copilotService: CopilotService,
+    private val copilotStreamService: CopilotStreamService,
 ) {
     @GetMapping("/today")
     fun getTodayCopilot(): ApiResponse<TodayCopilotResponse> =
@@ -29,4 +32,8 @@ class CopilotController(
     @PostMapping("/ask")
     fun ask(@Valid @RequestBody request: CopilotAskRequest): ApiResponse<CopilotAskResponse> =
         ApiResponse.ok(copilotService.ask(request.question))
+
+    @PostMapping("/ask/stream")
+    fun askStream(@Valid @RequestBody request: CopilotAskRequest): SseEmitter =
+        copilotStreamService.askStream(request.question)
 }
