@@ -1,0 +1,1 @@
+ALTER TABLE copilot_history ADD COLUMN IF NOT EXISTS rating INTEGER;

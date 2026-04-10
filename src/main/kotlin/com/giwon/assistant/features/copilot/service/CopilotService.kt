@@ -149,11 +149,13 @@ class CopilotService(
         val recentHistory = copilotHistoryRepository.findTop10ByOrderByGeneratedAtDesc()
             .reversed()
             .takeLast(3)
+        val goodExamples = copilotHistoryRepository.findTop3ByRatingOrderByGeneratedAtDesc(1)
+        val badExamples = copilotHistoryRepository.findTop3ByRatingOrderByGeneratedAtDesc(-1)
         val providerErrors = mutableListOf<String>()
 
-        val answer = askWithGemini(question, copilot, ideas, recentHistory, providerErrors)
-            ?: askWithClaude(question, copilot, ideas, recentHistory, providerErrors)
-            ?: askWithOpenAi(question, copilot, ideas, recentHistory, providerErrors)
+        val answer = askWithGemini(question, copilot, ideas, recentHistory, goodExamples, badExamples, providerErrors)
+            ?: askWithClaude(question, copilot, ideas, recentHistory, goodExamples, badExamples, providerErrors)
+            ?: askWithOpenAi(question, copilot, ideas, recentHistory, goodExamples, badExamples, providerErrors)
             ?: localAsk(
                 question = question,
                 copilot = copilot,
@@ -172,6 +174,12 @@ class CopilotService(
 
     fun getRecentHistory(): List<CopilotHistoryResponse> =
         copilotHistoryRepository.findTop10ByOrderByGeneratedAtDesc().map { it.toResponse() }
+
+    fun rateHistory(id: String, rating: Int) {
+        val entity = copilotHistoryRepository.findById(id).orElseThrow { NoSuchElementException("History not found: $id") }
+        entity.rating = rating
+        copilotHistoryRepository.save(entity)
+    }
 
     private fun buildTopPriority(primaryTask: String, firstEventTitle: String?): String =
         if (firstEventTitle == null) {
@@ -307,6 +315,8 @@ class CopilotService(
         copilot: TodayCopilotResponse,
         ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
         recentHistory: List<CopilotHistoryEntity>,
+        goodExamples: List<CopilotHistoryEntity> = emptyList(),
+        badExamples: List<CopilotHistoryEntity> = emptyList(),
         providerErrors: MutableList<String>,
     ): CopilotAskResponse? {
         if (!geminiEnabled || geminiApiKey.isBlank()) {
@@ -314,7 +324,7 @@ class CopilotService(
         }
 
         return runCatching {
-            val prompt = buildAskPrompt(question, copilot, ideas, recentHistory)
+            val prompt = buildAskPrompt(question, copilot, ideas, recentHistory, goodExamples, badExamples)
             val body = mapOf(
                 "contents" to listOf(
                     mapOf(
@@ -352,6 +362,8 @@ class CopilotService(
         copilot: TodayCopilotResponse,
         ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
         recentHistory: List<CopilotHistoryEntity>,
+        goodExamples: List<CopilotHistoryEntity> = emptyList(),
+        badExamples: List<CopilotHistoryEntity> = emptyList(),
         providerErrors: MutableList<String>,
     ): CopilotAskResponse? {
         if (!claudeEnabled || anthropicApiKey.isBlank()) {
@@ -359,7 +371,7 @@ class CopilotService(
         }
 
         return runCatching {
-            val prompt = buildAskPrompt(question, copilot, ideas, recentHistory)
+            val prompt = buildAskPrompt(question, copilot, ideas, recentHistory, goodExamples, badExamples)
             val body = mapOf(
                 "model" to anthropicProperties.model,
                 "max_tokens" to 512,
@@ -396,6 +408,8 @@ class CopilotService(
         copilot: TodayCopilotResponse,
         ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
         recentHistory: List<CopilotHistoryEntity>,
+        goodExamples: List<CopilotHistoryEntity> = emptyList(),
+        badExamples: List<CopilotHistoryEntity> = emptyList(),
         providerErrors: MutableList<String>,
     ): CopilotAskResponse? {
         if (!openAiEnabled || openAiApiKey.isBlank()) {
@@ -403,7 +417,7 @@ class CopilotService(
         }
 
         return runCatching {
-            val prompt = buildAskPrompt(question, copilot, ideas, recentHistory)
+            val prompt = buildAskPrompt(question, copilot, ideas, recentHistory, goodExamples, badExamples)
             val body = mapOf(
                 "model" to openAiProperties.model,
                 "input" to prompt,
@@ -484,6 +498,8 @@ class CopilotService(
         copilot: TodayCopilotResponse,
         ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
         recentHistory: List<CopilotHistoryEntity> = emptyList(),
+        goodExamples: List<CopilotHistoryEntity> = emptyList(),
+        badExamples: List<CopilotHistoryEntity> = emptyList(),
     ): String {
         val historySection = if (recentHistory.isNotEmpty()) {
             "\n이전 대화 (최근 ${recentHistory.size}건):\n" +
@@ -491,6 +507,14 @@ class CopilotService(
         } else {
             ""
         }
+        val goodSection = if (goodExamples.isNotEmpty()) {
+            "\n[사용자가 좋아했던 답변 예시 - 이 스타일을 참고해줘]\n" +
+                goodExamples.joinToString("\n") { "Q: ${it.question}\nA: ${it.answer}" }
+        } else ""
+        val badSection = if (badExamples.isNotEmpty()) {
+            "\n[사용자가 싫어했던 답변 예시 - 이런 스타일은 피해줘]\n" +
+                badExamples.joinToString("\n") { "Q: ${it.question}\nA: ${it.answer}" }
+        } else ""
 
         return """
         너는 개인 생산성 코파일럿이다.
@@ -514,7 +538,7 @@ class CopilotService(
         ${copilot.risks.joinToString("\n") { "- $it" }}
         최근 아이디어:
         ${ideas.joinToString("\n") { "- ${it.title} (${it.status})" }}
-        $historySection
+        $historySection$goodSection$badSection
         사용자 질문:
         $question
         """.trimIndent()
@@ -776,6 +800,7 @@ class CopilotService(
             suggestedActions = objectMapper.readValue(suggestedActions, objectMapper.typeFactory.constructCollectionType(List::class.java, String::class.java)),
             source = source,
             generatedAt = generatedAt.toString(),
+            rating = rating,
         )
 
     private enum class LocalIntent {

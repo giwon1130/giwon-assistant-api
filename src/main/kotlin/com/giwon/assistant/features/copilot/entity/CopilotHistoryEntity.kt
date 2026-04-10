@@ -24,4 +24,6 @@ class CopilotHistoryEntity(
     var suggestedActions: String = "[]",
     @Column(name = "source", nullable = false, length = 32)
     var source: String = "",
+    @Column(name = "rating")
+    var rating: Int? = null,
 )

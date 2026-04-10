@@ -9,9 +9,11 @@ import com.giwon.assistant.features.copilot.service.CopilotService
 import com.giwon.assistant.features.copilot.service.CopilotStreamService
 import jakarta.validation.Valid
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 
@@ -36,4 +38,14 @@ class CopilotController(
     @PostMapping("/ask/stream")
     fun askStream(@Valid @RequestBody request: CopilotAskRequest): SseEmitter =
         copilotStreamService.askStream(request.question)
+
+    @PostMapping("/history/{id}/rating")
+    fun rateHistory(
+        @PathVariable id: String,
+        @RequestParam rating: Int,
+    ): ApiResponse<Unit> {
+        require(rating == 1 || rating == -1) { "rating must be 1 (good) or -1 (bad)" }
+        copilotService.rateHistory(id, rating)
+        return ApiResponse.ok(Unit)
+    }
 }

@@ -9,4 +9,5 @@ data class CopilotHistoryResponse(
     val suggestedActions: List<String>,
     val source: String,
     val generatedAt: String,
+    val rating: Int? = null,
 )
