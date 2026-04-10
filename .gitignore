@@ -4,3 +4,7 @@ out/
 .idea/
 .vscode/
 *.iml
+
+# env
+.env
+.env.local
