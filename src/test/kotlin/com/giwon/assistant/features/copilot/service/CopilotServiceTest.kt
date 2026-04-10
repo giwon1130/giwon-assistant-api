@@ -7,6 +7,7 @@ import com.giwon.assistant.features.briefing.service.NewsProvider
 import com.giwon.assistant.features.briefing.service.WeatherProvider
 import com.giwon.assistant.features.checkin.service.DailyConditionCheckinService
 import com.giwon.assistant.features.copilot.repository.CopilotHistoryRepository
+import com.giwon.assistant.features.briefing.service.AssistantAnthropicProperties
 import com.giwon.assistant.features.idea.service.AssistantGeminiProperties
 import com.giwon.assistant.features.idea.service.AssistantOpenAiProperties
 import com.giwon.assistant.features.idea.service.IdeaService
@@ -30,13 +31,17 @@ class CopilotServiceTest {
         newsProvider = mock(NewsProvider::class.java),
         geminiRestClient = mock(RestClient::class.java),
         openAiRestClient = mock(RestClient::class.java),
+        claudeRestClient = mock(RestClient::class.java),
         geminiProperties = AssistantGeminiProperties(model = "gemini-2.0-flash"),
         openAiProperties = AssistantOpenAiProperties(model = "gpt-4.1"),
+        anthropicProperties = AssistantAnthropicProperties(model = "claude-sonnet-4-5"),
         objectMapper = ObjectMapper(),
-        geminiEnabled = true,
-        openAiEnabled = true,
-        geminiApiKey = "test-key",
-        openAiApiKey = "test-key",
+        geminiEnabled = false,
+        openAiEnabled = false,
+        claudeEnabled = false,
+        geminiApiKey = "",
+        openAiApiKey = "",
+        anthropicApiKey = "",
     )
 
     @Test

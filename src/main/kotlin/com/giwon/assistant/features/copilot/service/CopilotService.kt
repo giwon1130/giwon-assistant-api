@@ -16,6 +16,7 @@ import com.giwon.assistant.features.copilot.dto.CopilotIdeaAction
 import com.giwon.assistant.features.copilot.dto.CopilotTimeSuggestion
 import com.giwon.assistant.features.copilot.entity.CopilotHistoryEntity
 import com.giwon.assistant.features.copilot.repository.CopilotHistoryRepository
+import com.giwon.assistant.features.briefing.service.AssistantAnthropicProperties
 import com.giwon.assistant.features.idea.service.AssistantGeminiProperties
 import com.giwon.assistant.features.idea.service.IdeaService
 import com.giwon.assistant.features.idea.service.AssistantOpenAiProperties
@@ -42,13 +43,17 @@ class CopilotService(
     private val newsProvider: NewsProvider,
     private val geminiRestClient: RestClient,
     private val openAiRestClient: RestClient,
+    private val claudeRestClient: RestClient,
     private val geminiProperties: AssistantGeminiProperties,
     private val openAiProperties: AssistantOpenAiProperties,
+    private val anthropicProperties: AssistantAnthropicProperties,
     private val objectMapper: ObjectMapper,
     @Value("\${assistant.integrations.gemini-enabled:false}") private val geminiEnabled: Boolean,
     @Value("\${assistant.integrations.openai-enabled:false}") private val openAiEnabled: Boolean,
+    @Value("\${assistant.integrations.claude-enabled:false}") private val claudeEnabled: Boolean,
     @Value("\${GEMINI_API_KEY:}") private val geminiApiKey: String,
     @Value("\${OPENAI_API_KEY:}") private val openAiApiKey: String,
+    @Value("\${ANTHROPIC_API_KEY:}") private val anthropicApiKey: String,
 ) {
     fun getTodayCopilot(): TodayCopilotResponse {
         val briefing = briefingService.getTodayBriefing(weatherProvider, calendarProvider, newsProvider)
@@ -141,10 +146,14 @@ class CopilotService(
         val copilot = getTodayCopilot()
         val todayPlan = plannerService.getTodayPlan()
         val ideas = ideaService.getAll().take(3)
+        val recentHistory = copilotHistoryRepository.findTop10ByOrderByGeneratedAtDesc()
+            .reversed()
+            .takeLast(3)
         val providerErrors = mutableListOf<String>()
 
-        val answer = askWithGemini(question, copilot, ideas, providerErrors)
-            ?: askWithOpenAi(question, copilot, ideas, providerErrors)
+        val answer = askWithGemini(question, copilot, ideas, recentHistory, providerErrors)
+            ?: askWithClaude(question, copilot, ideas, recentHistory, providerErrors)
+            ?: askWithOpenAi(question, copilot, ideas, recentHistory, providerErrors)
             ?: localAsk(
                 question = question,
                 copilot = copilot,
@@ -297,6 +306,7 @@ class CopilotService(
         question: String,
         copilot: TodayCopilotResponse,
         ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
+        recentHistory: List<CopilotHistoryEntity>,
         providerErrors: MutableList<String>,
     ): CopilotAskResponse? {
         if (!geminiEnabled || geminiApiKey.isBlank()) {
@@ -304,7 +314,7 @@ class CopilotService(
         }
 
         return runCatching {
-            val prompt = buildAskPrompt(question, copilot, ideas)
+            val prompt = buildAskPrompt(question, copilot, ideas, recentHistory)
             val body = mapOf(
                 "contents" to listOf(
                     mapOf(
@@ -337,10 +347,55 @@ class CopilotService(
         }
     }
 
+    private fun askWithClaude(
+        question: String,
+        copilot: TodayCopilotResponse,
+        ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
+        recentHistory: List<CopilotHistoryEntity>,
+        providerErrors: MutableList<String>,
+    ): CopilotAskResponse? {
+        if (!claudeEnabled || anthropicApiKey.isBlank()) {
+            return null
+        }
+
+        return runCatching {
+            val prompt = buildAskPrompt(question, copilot, ideas, recentHistory)
+            val body = mapOf(
+                "model" to anthropicProperties.model,
+                "max_tokens" to 512,
+                "messages" to listOf(mapOf("role" to "user", "content" to prompt)),
+            )
+
+            val responseBody = claudeRestClient.post()
+                .uri("/v1/messages")
+                .header("x-api-key", anthropicApiKey)
+                .header("anthropic-version", "2023-06-01")
+                .header("Content-Type", "application/json")
+                .body(body)
+                .retrieve()
+                .body(String::class.java)
+                ?: error("Claude response is empty")
+
+            val root = objectMapper.readTree(responseBody)
+            val outputText = root.path("content")
+                .takeIf { it.isArray }
+                ?.firstOrNull { it.path("type").asText() == "text" }
+                ?.path("text")?.asText()
+                ?.takeIf { it.isNotBlank() }
+                ?: error("Claude content is empty")
+
+            parseAskOutput(outputText, question, "CLAUDE")
+        }.getOrElse { throwable ->
+            providerErrors += buildFallbackReason("Claude", throwable)
+            null
+        }
+    }
+
     private fun askWithOpenAi(
         question: String,
         copilot: TodayCopilotResponse,
         ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
+        recentHistory: List<CopilotHistoryEntity>,
         providerErrors: MutableList<String>,
     ): CopilotAskResponse? {
         if (!openAiEnabled || openAiApiKey.isBlank()) {
@@ -348,7 +403,7 @@ class CopilotService(
         }
 
         return runCatching {
-            val prompt = buildAskPrompt(question, copilot, ideas)
+            val prompt = buildAskPrompt(question, copilot, ideas, recentHistory)
             val body = mapOf(
                 "model" to openAiProperties.model,
                 "input" to prompt,
@@ -428,10 +483,18 @@ class CopilotService(
         question: String,
         copilot: TodayCopilotResponse,
         ideas: List<com.giwon.assistant.features.idea.dto.IdeaDetailResponse>,
-    ): String =
-        """
+        recentHistory: List<CopilotHistoryEntity> = emptyList(),
+    ): String {
+        val historySection = if (recentHistory.isNotEmpty()) {
+            "\n이전 대화 (최근 ${recentHistory.size}건):\n" +
+                recentHistory.joinToString("\n") { "Q: ${it.question}\nA: ${it.answer}" }
+        } else {
+            ""
+        }
+
+        return """
         너는 개인 생산성 코파일럿이다.
-        아래 오늘 컨텍스트를 기준으로 질문에 짧고 실행 가능한 답을 해줘.
+        아래 오늘 컨텍스트와 이전 대화를 기준으로 질문에 짧고 실행 가능한 답을 해줘.
         응답은 반드시 아래 형식을 지켜.
 
         ANSWER: 한두 문장 답변
@@ -451,10 +514,11 @@ class CopilotService(
         ${copilot.risks.joinToString("\n") { "- $it" }}
         최근 아이디어:
         ${ideas.joinToString("\n") { "- ${it.title} (${it.status})" }}
-
+        $historySection
         사용자 질문:
         $question
         """.trimIndent()
+    }
 
     private fun parseAskOutput(outputText: String, question: String, source: String): CopilotAskResponse {
         val lines = outputText.lines().map { it.trim() }.filter { it.isNotBlank() }
