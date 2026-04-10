@@ -55,6 +55,9 @@ assistant:
     model: ${ASSISTANT_GEMINI_MODEL:gemini-2.0-flash}
   anthropic:
     model: ${ASSISTANT_ANTHROPIC_MODEL:claude-sonnet-4-5}
+  slack:
+    enabled: ${ASSISTANT_SLACK_ENABLED:false}
+    webhook-url: ${ASSISTANT_SLACK_WEBHOOK_URL:}
   notion:
     enabled: ${ASSISTANT_NOTION_ENABLED:false}
     token: ${ASSISTANT_NOTION_TOKEN:}
