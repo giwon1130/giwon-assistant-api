@@ -31,4 +31,5 @@ data class HeadlineItem(
 data class TaskItem(
     val priority: String,
     val title: String,
+    val mock: Boolean = false,
 )

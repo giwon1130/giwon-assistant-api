@@ -26,6 +26,7 @@ class BriefingService(
     private val scheduleProperties: AssistantBriefingScheduleProperties,
     private val notionBriefingExporter: NotionBriefingExporter,
     private val briefingSummaryProvider: BriefingSummaryProvider,
+    private val taskProvider: TaskProvider,
 ) {
     companion object {
         private const val MANUAL_SOURCE = "MANUAL"
@@ -104,11 +105,14 @@ class BriefingService(
                     HeadlineItem(source = "Local", title = "날씨 변동 폭이 커 외출 전 확인 필요", mock = true),
                 )
             }
-        val tasks = listOf(
-            TaskItem(priority = "HIGH", title = "AI 비서 MVP API 구조 확정"),
-            TaskItem(priority = "MEDIUM", title = "giwon-home에 live 링크 연결"),
-            TaskItem(priority = "LOW", title = "아이디어 노트 정리"),
-        )
+        val tasks = runCatching { taskProvider.getOpenTasks() }
+            .getOrElse {
+                listOf(
+                    TaskItem(priority = "HIGH", title = "AI 비서 MVP API 구조 확정", mock = true),
+                    TaskItem(priority = "MEDIUM", title = "giwon-home에 live 링크 연결", mock = true),
+                    TaskItem(priority = "LOW", title = "아이디어 노트 정리", mock = true),
+                )
+            }
 
         val summaryResult = runCatching {
             briefingSummaryProvider.summarize(
