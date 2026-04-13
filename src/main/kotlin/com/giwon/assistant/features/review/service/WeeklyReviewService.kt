@@ -1,13 +1,14 @@
 package com.giwon.assistant.features.review.service
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.giwon.assistant.features.action.repository.CopilotActionRepository
 import com.giwon.assistant.features.briefing.repository.BriefingHistoryRepository
 import com.giwon.assistant.features.briefing.service.AssistantAnthropicProperties
 import com.giwon.assistant.features.copilot.repository.CopilotHistoryRepository
 import com.giwon.assistant.features.idea.repository.IdeaRepository
+import com.giwon.assistant.features.idea.service.AssistantGeminiProperties
+import com.giwon.assistant.features.idea.service.AssistantOpenAiProperties
 import com.giwon.assistant.features.routine.service.DailyRoutineService
 import com.giwon.assistant.features.review.dto.WeeklyReviewMetrics
 import com.giwon.assistant.features.review.dto.WeeklyReviewResponse
@@ -33,12 +34,21 @@ class WeeklyReviewService(
     private val dailyRoutineService: DailyRoutineService,
     private val weeklyReviewSnapshotRepository: WeeklyReviewSnapshotRepository,
     private val objectMapper: ObjectMapper,
+    @Qualifier("geminiRestClient") private val geminiRestClient: RestClient,
+    @Qualifier("openAiRestClient") private val openAiRestClient: RestClient,
     @Qualifier("claudeRestClient") private val claudeRestClient: RestClient,
+    private val geminiProperties: AssistantGeminiProperties,
+    private val openAiProperties: AssistantOpenAiProperties,
     private val anthropicProperties: AssistantAnthropicProperties,
+    @Value("\${assistant.integrations.gemini-enabled:false}") private val geminiEnabled: Boolean,
+    @Value("\${assistant.integrations.openai-enabled:false}") private val openAiEnabled: Boolean,
     @Value("\${assistant.integrations.claude-enabled:false}") private val claudeEnabled: Boolean,
+    @Value("\${GEMINI_API_KEY:}") private val geminiApiKey: String,
+    @Value("\${OPENAI_API_KEY:}") private val openAiApiKey: String,
     @Value("\${ANTHROPIC_API_KEY:}") private val anthropicApiKey: String,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
     fun getWeeklyReview(): WeeklyReviewResponse {
         val now = OffsetDateTime.now(ZoneOffset.UTC)
         val periodStart = now.toLocalDate()
@@ -114,7 +124,10 @@ class WeeklyReviewService(
             nextFocus = nextFocus,
         )
 
-        val review = enrichWithClaude(ruleBased) ?: ruleBased
+        val review = enrichWithGemini(ruleBased)
+            ?: enrichWithOpenAi(ruleBased)
+            ?: enrichWithClaude(ruleBased)
+            ?: ruleBased
         persistSnapshot(review)
         return review
     }
@@ -122,6 +135,161 @@ class WeeklyReviewService(
     fun getWeeklyReviewHistory(): List<WeeklyReviewSnapshotResponse> =
         weeklyReviewSnapshotRepository.findTop8ByOrderByGeneratedAtDesc()
             .map { it.toResponse() }
+
+    private fun buildReviewPrompt(review: WeeklyReviewResponse): String = """
+        다음은 이번 주 개인 생산성 데이터다. 이를 바탕으로 주간 리뷰를 작성해줘.
+        반드시 아래 형식만 사용해.
+
+        SUMMARY: 이번 주를 2~3문장으로 요약
+        WINS:
+        - 잘한 점 1
+        - 잘한 점 2
+        - 잘한 점 3
+        RISKS:
+        - 리스크/아쉬운 점 1
+        - 리스크/아쉬운 점 2
+        NEXT_FOCUS:
+        - 다음 주 집중 포인트 1
+        - 다음 주 집중 포인트 2
+        - 다음 주 집중 포인트 3
+
+        이번 주 데이터:
+        - 코파일럿 질문: ${review.metrics.questionsAsked}건
+        - 생성된 액션: ${review.metrics.actionsCreated}건
+        - 완료된 액션: ${review.metrics.actionsCompleted}건
+        - 미완료 액션: ${review.metrics.openActions}건
+        - 캡처된 아이디어: ${review.metrics.ideasCaptured}건
+        - 루틴 체크 완료: ${review.metrics.routineChecksCompleted}건
+        - 루틴 완료일: ${review.metrics.routineCompletionDays}일
+        - 생성된 브리핑: ${review.metrics.briefingsGenerated}회
+        기존 요약: ${review.summary}
+    """.trimIndent()
+
+    private fun enrichWithGemini(review: WeeklyReviewResponse): WeeklyReviewResponse? {
+        if (!geminiEnabled || geminiApiKey.isBlank()) return null
+        return runCatching {
+            val body = mapOf(
+                "contents" to listOf(mapOf("parts" to listOf(mapOf("text" to buildReviewPrompt(review)))))
+            )
+            val responseBody = geminiRestClient.post()
+                .uri { it.path("/v1beta/models/{model}:generateContent").queryParam("key", geminiApiKey).build(geminiProperties.model) }
+                .header("Content-Type", "application/json")
+                .body(body)
+                .retrieve()
+                .body(String::class.java)
+                ?: error("Gemini response is empty")
+
+            val outputText = extractGeminiText(responseBody) ?: error("Gemini text is empty")
+            parseReviewOutput(outputText, review)
+        }.getOrElse {
+            log.warn("Gemini weekly review enrichment failed: ${it.message}")
+            null
+        }
+    }
+
+    private fun enrichWithOpenAi(review: WeeklyReviewResponse): WeeklyReviewResponse? {
+        if (!openAiEnabled || openAiApiKey.isBlank()) return null
+        return runCatching {
+            val responseBody = openAiRestClient.post()
+                .uri("/v1/responses")
+                .header("Authorization", "Bearer $openAiApiKey")
+                .header("Content-Type", "application/json")
+                .body(mapOf("model" to openAiProperties.model, "input" to buildReviewPrompt(review)))
+                .retrieve()
+                .body(String::class.java)
+                ?: error("OpenAI response is empty")
+
+            val outputText = extractOpenAiText(responseBody) ?: error("OpenAI text is empty")
+            parseReviewOutput(outputText, review)
+        }.getOrElse {
+            log.warn("OpenAI weekly review enrichment failed: ${it.message}")
+            null
+        }
+    }
+
+    private fun enrichWithClaude(review: WeeklyReviewResponse): WeeklyReviewResponse? {
+        if (!claudeEnabled || anthropicApiKey.isBlank()) return null
+        return runCatching {
+            val body = mapOf(
+                "model" to anthropicProperties.model,
+                "max_tokens" to 512,
+                "messages" to listOf(mapOf("role" to "user", "content" to buildReviewPrompt(review))),
+            )
+            val responseBody = claudeRestClient.post()
+                .uri("/v1/messages")
+                .header("x-api-key", anthropicApiKey)
+                .header("anthropic-version", "2023-06-01")
+                .header("Content-Type", "application/json")
+                .body(body)
+                .retrieve()
+                .body(String::class.java)
+                ?: error("Claude response is empty")
+
+            val outputText = objectMapper.readTree(responseBody)
+                .path("content").takeIf { it.isArray }
+                ?.firstOrNull { it.path("type").asText() == "text" }
+                ?.path("text")?.asText()?.takeIf { it.isNotBlank() }
+                ?: error("Claude content is empty")
+
+            parseReviewOutput(outputText, review)
+        }.getOrElse {
+            log.warn("Claude weekly review enrichment failed: ${it.message}")
+            null
+        }
+    }
+
+    private fun extractGeminiText(responseBody: String): String? =
+        objectMapper.readTree(responseBody)
+            .path("candidates").takeIf(JsonNode::isArray)
+            ?.flatMap { candidate ->
+                candidate.path("content").path("parts").takeIf(JsonNode::isArray)
+                    ?.mapNotNull { it.path("text").takeIf { n -> !n.isMissingNode && !n.isNull }?.asText()?.trim()?.takeIf(String::isNotBlank) }
+                    .orEmpty()
+            }
+            .orEmpty()
+            .takeIf { it.isNotEmpty() }
+            ?.joinToString("\n")
+
+    private fun extractOpenAiText(responseBody: String): String? {
+        val root = objectMapper.readTree(responseBody)
+        root.path("output_text").takeIf { !it.isMissingNode && !it.isNull }
+            ?.asText()?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+
+        return root.path("output").takeIf(JsonNode::isArray)
+            ?.flatMap { outputNode ->
+                outputNode.path("content").takeIf(JsonNode::isArray)
+                    ?.mapNotNull { it.path("text").takeIf { n -> !n.isMissingNode && !n.isNull }?.asText()?.trim()?.takeIf(String::isNotBlank) }
+                    .orEmpty()
+            }
+            .orEmpty()
+            .takeIf { it.isNotEmpty() }
+            ?.joinToString("\n")
+    }
+
+    private fun parseReviewOutput(text: String, fallback: WeeklyReviewResponse): WeeklyReviewResponse {
+        val lines = text.lines().map { it.trim() }.filter { it.isNotBlank() }
+        val summary = lines.firstOrNull { it.startsWith("SUMMARY:") }
+            ?.substringAfter("SUMMARY:")?.trim()
+            ?: fallback.summary
+        val wins = extractBulletSection(lines, "WINS:").ifEmpty { fallback.wins }
+        val risks = extractBulletSection(lines, "RISKS:").ifEmpty { fallback.risks }
+        val nextFocus = extractBulletSection(lines, "NEXT_FOCUS:").ifEmpty { fallback.nextFocus }
+        return fallback.copy(summary = summary, wins = wins, risks = risks, nextFocus = nextFocus)
+    }
+
+    private fun extractBulletSection(lines: List<String>, header: String): List<String> {
+        val startIndex = lines.indexOfFirst { it == header }
+        if (startIndex == -1) return emptyList()
+        return lines.drop(startIndex + 1)
+            .takeWhile { !it.endsWith(":") }
+            .mapNotNull { line ->
+                when {
+                    line.startsWith("- ") -> line.removePrefix("- ").trim()
+                    line.startsWith("* ") -> line.removePrefix("* ").trim()
+                    else -> null
+                }
+            }
+    }
 
     private fun buildSummary(
         metrics: WeeklyReviewMetrics,
@@ -141,95 +309,6 @@ class WeeklyReviewService(
         val questionPart = topQuestion?.let { "가장 자주 반복된 질문은 '${it}'였다." }
             ?: "질문 로그가 많지 않아 패턴 분석은 다음 주에 더 정확해질 수 있다."
         return "이번 주 코파일럿 질문 ${metrics.questionsAsked}건, 아이디어 ${metrics.ideasCaptured}건이 쌓였다. $actionPart $routinePart $questionPart"
-    }
-
-    private fun enrichWithClaude(review: WeeklyReviewResponse): WeeklyReviewResponse? {
-        if (!claudeEnabled || anthropicApiKey.isBlank()) return null
-
-        return runCatching {
-            val prompt = """
-            다음은 이번 주 개인 생산성 데이터다. 이를 바탕으로 주간 리뷰를 작성해줘.
-            반드시 아래 형식만 사용해.
-
-            SUMMARY: 이번 주를 2~3문장으로 요약
-            WINS:
-            - 잘한 점 1
-            - 잘한 점 2
-            - 잘한 점 3
-            RISKS:
-            - 리스크/아쉬운 점 1
-            - 리스크/아쉬운 점 2
-            NEXT_FOCUS:
-            - 다음 주 집중 포인트 1
-            - 다음 주 집중 포인트 2
-            - 다음 주 집중 포인트 3
-
-            이번 주 데이터:
-            - 코파일럿 질문: ${review.metrics.questionsAsked}건
-            - 생성된 액션: ${review.metrics.actionsCreated}건
-            - 완료된 액션: ${review.metrics.actionsCompleted}건
-            - 미완료 액션: ${review.metrics.openActions}건
-            - 캡처된 아이디어: ${review.metrics.ideasCaptured}건
-            - 루틴 체크 완료: ${review.metrics.routineChecksCompleted}건
-            - 루틴 완료일: ${review.metrics.routineCompletionDays}일
-            - 생성된 브리핑: ${review.metrics.briefingsGenerated}회
-            기존 요약: ${review.summary}
-            """.trimIndent()
-
-            val body = mapOf(
-                "model" to anthropicProperties.model,
-                "max_tokens" to 512,
-                "messages" to listOf(mapOf("role" to "user", "content" to prompt)),
-            )
-
-            val responseBody = claudeRestClient.post()
-                .uri("/v1/messages")
-                .header("x-api-key", anthropicApiKey)
-                .header("anthropic-version", "2023-06-01")
-                .body(body)
-                .retrieve()
-                .body(String::class.java)
-                ?: error("Claude response is empty")
-
-            val root = objectMapper.readTree(responseBody)
-            val outputText = root.path("content")
-                .takeIf { it.isArray }
-                ?.firstOrNull { it.path("type").asText() == "text" }
-                ?.path("text")?.asText()
-                ?.takeIf { it.isNotBlank() }
-                ?: error("Claude content is empty")
-
-            parseClaudeReview(outputText, review)
-        }.getOrElse {
-            log.warn("Claude weekly review enrichment failed: ${it.message}")
-            null
-        }
-    }
-
-    private fun parseClaudeReview(text: String, fallback: WeeklyReviewResponse): WeeklyReviewResponse {
-        val lines = text.lines().map { it.trim() }.filter { it.isNotBlank() }
-        val summary = lines.firstOrNull { it.startsWith("SUMMARY:") }
-            ?.substringAfter("SUMMARY:")?.trim()
-            ?: fallback.summary
-        val wins = extractBulletSection(lines, "WINS:").ifEmpty { fallback.wins }
-        val risks = extractBulletSection(lines, "RISKS:").ifEmpty { fallback.risks }
-        val nextFocus = extractBulletSection(lines, "NEXT_FOCUS:").ifEmpty { fallback.nextFocus }
-
-        return fallback.copy(summary = summary, wins = wins, risks = risks, nextFocus = nextFocus)
-    }
-
-    private fun extractBulletSection(lines: List<String>, header: String): List<String> {
-        val startIndex = lines.indexOfFirst { it == header }
-        if (startIndex == -1) return emptyList()
-        return lines.drop(startIndex + 1)
-            .takeWhile { !it.endsWith(":") }
-            .mapNotNull { line ->
-                when {
-                    line.startsWith("- ") -> line.removePrefix("- ").trim()
-                    line.startsWith("* ") -> line.removePrefix("* ").trim()
-                    else -> null
-                }
-            }
     }
 
     private fun persistSnapshot(review: WeeklyReviewResponse) {
