@@ -94,6 +94,7 @@ docker compose up -d --build
 - PostgreSQL 프로필로 올라간다.
 - API: `8080`, PostgreSQL: `5436`
 - 환경변수는 `.env` 파일 또는 셸 환경변수로 전달한다.
+- 런타임 이미지에는 `wget`을 포함해 이후 compose/컨테이너 healthcheck에 바로 대응할 수 있게 맞춰뒀다.
 
 ## API 예시
 
