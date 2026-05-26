@@ -20,7 +20,12 @@
 ### 코파일럿
 - `GET /api/v1/copilot/today` — 오늘 코파일럿 요약
 - `GET /api/v1/copilot/history` — 코파일럿 대화 이력
-- `POST /api/v1/copilot/ask` — 코파일럿 질문
+- `POST /api/v1/copilot/ask` — 코파일럿 질문 (즉시 응답)
+- `POST /api/v1/copilot/ask/stream` — 코파일럿 질문 (SSE 스트리밍 응답)
+
+### 주간 리뷰
+- `GET /api/v1/reviews/weekly` — 이번 주 리뷰
+- `GET /api/v1/reviews/weekly/history` — 주간 리뷰 이력
 
 ### 기타
 - `GET /api/v1/plans/today` — 오늘 계획 조회
