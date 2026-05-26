@@ -10,6 +10,13 @@
 - copilot: 오늘 추천, 히스토리, 질문 응답
 - integrations: Open-Meteo, Google News RSS, Gemini/OpenAI(선택)
 
+## key endpoints
+- `GET /api/v1/briefings/today`, `/history`, `/schedule`, `/audio`
+- `GET /api/v1/copilot/today`, `/history`
+- `POST /api/v1/copilot/ask`, `/ask/stream`
+- `GET/POST /api/v1/ideas`
+- `GET /api/v1/reviews/weekly`, `/weekly/history`
+
 ## runtime notes
 - local 기본 포트: `8080`
 - health: `/actuator/health`
@@ -17,3 +24,5 @@
 - docker profile: PostgreSQL
 - external LLM 실패 시 rule-based fallback 응답 제공
 
+## verify
+- `./gradlew test`
